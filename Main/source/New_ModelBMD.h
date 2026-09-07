@@ -6,6 +6,17 @@
 class BMD;
 class OBJECT;
 
+namespace OGL330
+{
+	bool IsShader();
+	void SetShaderState(bool Enable);
+}
+
+// Runtime safety guard for shared BMD assets. NPC/monster instances are kept on
+// the legacy renderer until the modern per-instance transform contract has full
+// parity. Implemented in Render/Model/BMDModernObjectGuard.cpp.
+bool BMDModernShouldForceLegacyObject(const OBJECT* object);
+
 namespace OGL330MODEL
 {
 	typedef struct _mvec3
@@ -151,14 +162,40 @@ namespace OGL330MODEL
 
 class rRenderLayOut
 {
+private:
+	bool m_ForcedLegacy;
+	bool m_PreviousShaderState;
+
 public:
 	rRenderLayOut(OBJECT* pObj)
+		: m_ForcedLegacy(false)
+		, m_PreviousShaderState(false)
 	{
+		// NPC/monster BMD objects are shared assets with mutable per-instance
+		// state. Until the modern path snapshots every instance transform, render
+		// them entirely through the known-good legacy path. This also prevents a
+		// hover/highlight pass from switching an invisible modern NPC back to the
+		// legacy renderer only while the mouse is over it.
+		if (pObj != NULL && BMDModernShouldForceLegacyObject(pObj))
+		{
+			m_PreviousShaderState = OGL330::IsShader();
+			if (m_PreviousShaderState)
+			{
+				if (GMMeshShader->HasPendingMeshes())
+					GMMeshShader->FlushAllMesh();
+				OGL330::SetShaderState(false);
+				m_ForcedLegacy = true;
+			}
+		}
+
 		OGL330MODEL::SetTargetRender(pObj);
 	}
+
 	~rRenderLayOut()
 	{
 		OGL330MODEL::SetTargetRender(NULL);
+		if (m_ForcedLegacy)
+			OGL330::SetShaderState(m_PreviousShaderState);
 	}
 };
 
