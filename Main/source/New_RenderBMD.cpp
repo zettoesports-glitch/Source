@@ -6,6 +6,7 @@
 #include "ZzzTexture.h"
 #include "TextureScript.h"
 #include "Utilities/Log/muConsoleDebug.h"
+#include "Render/Model/BMDModernRuntime.h"
 
 CGMNewRenderBMD* g_NewRenderBMD = NULL;
 
@@ -91,6 +92,15 @@ void CGMShaderBMD::Render(OGL330MODEL::RenderMeshVAO& r)
 
 		if ((r.m_FlagRender & RENDER_NODEPTH) == RENDER_NODEPTH)
 			DisableDepthTest();
+	}
+
+	// First-light modern path. It is deliberately opt-in and narrow; unsupported
+	// materials or any resource/encoding failure return false and immediately
+	// continue through the unchanged legacy u_Bones renderer below.
+	if (gBMDModernRuntime.IsEnabled() && gBMDModernRuntime.TryRender(r))
+	{
+		OGL330MODEL::InvalidateShaderCache();
+		return;
 	}
 
 	SendUniform(r.m_Shader, r.m_bodyLight, r.m_lightPosition, r.m_meshUV, r.m_setting1, r.m_setting2, r.m_isLight, (r.m_FlagRender & RENDER_SHADOWMAP), r.m_OldBMD->BodyOrigin);
