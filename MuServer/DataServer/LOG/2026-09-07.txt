@@ -1,0 +1,5 @@
+10:10:59 [SocketManager] Server started at port [55960]
+10:11:06 [ServerManager][0] AddServer (127.0.0.1)
+10:11:06 [ServerManager][0] ServerInfo (GameServer) (55901) (0)
+10:12:21 SELECT Data FROM HelperData WHERE Name='DLDoADM'
+10:12:21 [QueryManager] State (42S02), Diagnostic: [Microsoft][ODBC Driver 11 for SQL Server][SQL Server]Invalid object name 'HelperData'.

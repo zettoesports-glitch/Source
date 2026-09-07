@@ -1,0 +1,31 @@
+10:11:02 [ServerInfo] CashShop loaded successfully
+10:11:02 [ServerInfo] ChaosMix loaded successfully
+10:11:02 [ServerInfo] Character loaded successfully
+10:11:02 [ServerInfo] Command loaded successfully
+10:11:02 [ServerInfo] Common loaded successfully
+10:11:02 [ServerInfo] Custom loaded successfully
+10:11:03 [ServerInfo] Event loaded successfully
+10:11:03 [ServerInfo] EventItemBag loaded successfully
+10:11:03 [ServerInfo] Hack loaded successfully
+10:11:03 [ServerInfo] Item loaded successfully
+10:11:04 [ServerInfo] Terrain loaded successfully
+10:11:04 [ServerInfo] Monster loaded successfully
+10:11:04 [ServerInfo] Move loaded successfully
+10:11:04 [ServerInfo] Quest loaded successfully
+10:11:05 [ServerInfo] Shop loaded successfully
+10:11:05 [ServerInfo] Skill loaded successfully
+10:11:05 [ServerInfo] Util loaded successfully
+10:11:05 [CustomRanking] Sistema desativado.
+10:11:06 Connected to database
+10:11:06 [ServerInfo] Lua loaded successfully
+10:11:49 [Obj][9000] AddClient (10.1.66.63)
+10:11:50 [Obj][9000] AddAccount (admin)
+10:11:53 [ObjectManager][9000] DelAccountInfo (admin)
+10:11:53 [ObjectManager][9000] DelClient (10.1.66.63)
+10:12:19 [Obj][9000] AddClient (10.1.66.63)
+10:12:19 [Obj][9000] AddAccount (admin)
+10:12:21 [ObjectManager][9000] AddCharacterInfo (DLDoADM)
+10:12:22 [Reg HWID] Login: admin | Personagem: DLDoADM | HWID: 
+10:12:55 [ObjectManager][9000] DelCharacterInfo (DLDoADM)
+10:12:55 [ObjectManager][9000] DelAccountInfo (admin)
+10:12:55 [ObjectManager][9000] DelClient (10.1.66.63)

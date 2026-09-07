@@ -1,3 +1,14 @@
+C:\MUVULKAN\Source\Main\source\Render\Model\BMDModernInstanceBuilder.cpp;C:\MUVULKAN\Source\Main\source\Global Release\BMDModernInstanceBuilder.obj
+C:\MUVULKAN\Source\Main\source\Render\Model\BMDModernMesh.cpp;C:\MUVULKAN\Source\Main\source\Global Release\BMDModernMesh.obj
+C:\MUVULKAN\Source\Main\source\Render\Model\BMDModernSkeletonPose.cpp;C:\MUVULKAN\Source\Main\source\Global Release\BMDModernSkeletonPose.obj
+C:\MUVULKAN\Source\Main\source\Render\Model\SkeletonBuffer.cpp;C:\MUVULKAN\Source\Main\source\Global Release\SkeletonBuffer.obj
+C:\MUVULKAN\Source\Main\source\Render\Model\SkeletonEncoder.cpp;C:\MUVULKAN\Source\Main\source\Global Release\SkeletonEncoder.obj
+C:\MUVULKAN\Source\Main\source\Render\Model\SkeletonEncoderTests.cpp;C:\MUVULKAN\Source\Main\source\Global Release\SkeletonEncoderTests.obj
+C:\MUVULKAN\Source\Main\source\Render\OpenGL\OpenGLBMDModernBindings.cpp;C:\MUVULKAN\Source\Main\source\Global Release\OpenGLBMDModernBindings.obj
+C:\MUVULKAN\Source\Main\source\Render\OpenGL\OpenGLBMDModernInstanceBuffer.cpp;C:\MUVULKAN\Source\Main\source\Global Release\OpenGLBMDModernInstanceBuffer.obj
+C:\MUVULKAN\Source\Main\source\Render\OpenGL\OpenGLBMDModernVAO.cpp;C:\MUVULKAN\Source\Main\source\Global Release\OpenGLBMDModernVAO.obj
+C:\MUVULKAN\Source\Main\source\Render\OpenGL\OpenGLShaderGlobalConstants.cpp;C:\MUVULKAN\Source\Main\source\Global Release\OpenGLShaderGlobalConstants.obj
+C:\MUVULKAN\Source\Main\source\Render\OpenGL\OpenGLSkeletonTexture.cpp;C:\MUVULKAN\Source\Main\source\Global Release\OpenGLSkeletonTexture.obj
 C:\MUVULKAN\Source\Main\source\CAIController.cpp;C:\MUVULKAN\Source\Main\source\Global Release\CAIController.obj
 C:\MUVULKAN\Source\Main\source\AutoClick.cpp;C:\MUVULKAN\Source\Main\source\Global Release\AutoClick.obj
 C:\MUVULKAN\Source\Main\source\BlackWin.cpp;C:\MUVULKAN\Source\Main\source\Global Release\BlackWin.obj
