@@ -7,6 +7,7 @@
 #include "ZzzBMD.h"
 #include "ZzzObject.h"
 #include "New_RenderBMD.h"
+#include "Render/Model/BMDModernRuntime.h"
 
 #include "Utilities/Log/muConsoleDebug.h"
 
@@ -717,10 +718,20 @@ void CGMMeshShader::FlushAllMesh()
 	}
 
 	OGL330MODEL::BeginUniformBatch();
+
+	// Stage all immutable per-command palettes before the first draw. The modern
+	// path uploads one BonesTexture atlas for this complete flush; unsupported
+	// commands simply continue through the unchanged legacy renderer below.
+	if (gBMDModernRuntime.IsEnabled())
+		gBMDModernRuntime.PrepareBatch(m_Data);
+
 	for (MeshVAO::iterator iter = m_Data.begin(); iter != m_Data.end(); ++iter)
 	{
 		g_NewRenderBMD->Render(*iter);
 	}
+
+	if (gBMDModernRuntime.IsEnabled())
+		gBMDModernRuntime.FinishBatch();
 
 	m_Data.clear();
 	OGL330MODEL::UnUseShader();
