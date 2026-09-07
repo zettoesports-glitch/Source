@@ -22,16 +22,29 @@ bool OpenGLSkeletonTexture::Upload(const SkeletonBuffer& skeleton)
     const std::vector<float>& texels = skeleton.GetTexels();
     const size_t texelCount = texels.size() / 4u;
 
-    if (texels.empty() || texelCount == 0)
+    if (texels.empty() || texelCount == 0 || (texels.size() % 4u) != 0u)
         return false;
 
     const std::uint32_t requiredHeight =
         static_cast<std::uint32_t>((texelCount + m_Width - 1u) / m_Width);
 
+    GLint maxTextureSize = 0;
+    glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maxTextureSize);
+    if (maxTextureSize <= 0 ||
+        m_Width > static_cast<std::uint32_t>(maxTextureSize) ||
+        requiredHeight == 0 ||
+        requiredHeight > static_cast<std::uint32_t>(maxTextureSize))
+    {
+        return false;
+    }
+
     // The shader uses texelFetch, therefore filtering and mipmaps are disabled.
     if (m_Texture == 0)
     {
         glGenTextures(1, &m_Texture);
+        if (m_Texture == 0)
+            return false;
+
         glBindTexture(GL_TEXTURE_2D, m_Texture);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
