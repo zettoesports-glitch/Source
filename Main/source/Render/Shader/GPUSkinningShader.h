@@ -1,10 +1,12 @@
 #pragma once
 
+#include "../Uniforms/BoneUBO.h"
+
 namespace Render
 {
-    // Shader contract for the future BMD GPU-skinning path.
-    // The current BMD asset format exposes one bone per vertex, so the
-    // runtime may use weight0=1 and weights1..3=0 without changing assets.
+    // Shader contract for the BMD GPU-skinning path.
+    // Season 5.2 currently supplies one bone per vertex; the runtime maps it
+    // to influence 0 with weight 1.0 and leaves the other influences at zero.
     struct GPUSkinningShaderLayout
     {
         enum
@@ -14,13 +16,10 @@ namespace Render
             TexCoordLocation = 2,
             BoneIndexLocation = 3,
             BoneWeightLocation = 4,
-            BoneUBOSlot = 2
+            BoneUBOSlot = BoneUBOSlot
         };
     };
 
-    // Keep this shader source backend-neutral until the real VBO shader
-    // assets are migrated. Normals are skinned with the same weighted matrix
-    // as positions; translation is removed from the normal transform.
     static const char* const GPUSkinningVertexShader =
         "#version 330 core\\n"
         "layout(location=0) in vec3 a_Position;\\n"
