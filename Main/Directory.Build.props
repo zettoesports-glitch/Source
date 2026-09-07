@@ -3,6 +3,7 @@
   <ItemGroup Condition="'$(MSBuildProjectName)'=='Main'">
     <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\Model\BMDModernInstanceBuilder.cpp" />
     <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\Model\BMDModernMesh.cpp" />
+    <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\Model\BMDModernRuntime.cpp" />
     <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\Model\BMDModernSkeletonPose.cpp" />
     <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\Model\SkeletonBuffer.cpp" />
     <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\Model\SkeletonEncoder.cpp" />
