@@ -36,7 +36,6 @@ namespace
         std::ifstream file(path, std::ios::in | std::ios::binary);
         if (!file.is_open())
             return std::string();
-
         std::ostringstream stream;
         stream << file.rdbuf();
         return stream.str();
@@ -72,14 +71,13 @@ namespace
         const std::string fragmentSource = ReadTextFile(fragmentPath);
         if (vertexSource.empty() || fragmentSource.empty())
         {
-            ModernLog("experimental shader files were not found; legacy fallback remains active");
+            ModernLog("experimental shader files not found; using legacy fallback");
             return 0;
         }
 
         GLuint vertex = CompileStage(GL_VERTEX_SHADER, vertexSource, vertexPath);
         if (vertex == 0)
             return 0;
-
         GLuint fragment = CompileStage(GL_FRAGMENT_SHADER, fragmentSource, fragmentPath);
         if (fragment == 0)
         {
@@ -91,7 +89,6 @@ namespace
         glAttachShader(program, vertex);
         glAttachShader(program, fragment);
         glLinkProgram(program);
-
         glDeleteShader(vertex);
         glDeleteShader(fragment);
 
@@ -106,7 +103,6 @@ namespace
             glDeleteProgram(program);
             return 0;
         }
-
         return program;
     }
 
@@ -114,7 +110,6 @@ namespace
     {
         BMD* Model;
         int MeshIndex;
-
         bool operator==(const MeshKey& other) const
         {
             return Model == other.Model && MeshIndex == other.MeshIndex;
@@ -125,8 +120,8 @@ namespace
     {
         size_t operator()(const MeshKey& key) const
         {
-            const size_t pointerHash = reinterpret_cast<size_t>(key.Model) >> 4;
-            return pointerHash ^ (static_cast<size_t>(key.MeshIndex) * static_cast<size_t>(2654435761u));
+            return (reinterpret_cast<size_t>(key.Model) >> 4) ^
+                   (static_cast<size_t>(key.MeshIndex) * static_cast<size_t>(2654435761u));
         }
     };
 
@@ -139,7 +134,6 @@ namespace
 struct BMDModernRuntime::Impl
 {
     bool Enabled;
-    bool FrameReady;
     bool ProgramAttempted;
     GLuint Program;
     GLint ProjectionLocation;
@@ -150,14 +144,11 @@ struct BMDModernRuntime::Impl
     OpenGLSkeletonTexture SkeletonTexture;
     OpenGLBMDModernBindings Bindings;
     OpenGLBMDModernInstanceBuffer InstanceBuffer;
-
-    std::unordered_map<const std::vector<float>*, BMDModernSkeletonSubmission> Submissions;
     std::unordered_map<MeshKey, std::unique_ptr<ModernMeshGpu>, MeshKeyHash> Meshes;
 
     Impl()
         : Enabled(GetPrivateProfileIntA("ModernRenderer", "ExperimentalBMD", 0,
                                         ".\\Data\\Custom\\config.ini") != 0)
-        , FrameReady(false)
         , ProgramAttempted(false)
         , Program(0)
         , ProjectionLocation(-1)
@@ -182,7 +173,7 @@ struct BMDModernRuntime::Impl
 
         if (!Bindings.ConfigureProgram(Program))
         {
-            ModernLog("sampler contract mismatch; legacy fallback remains active");
+            ModernLog("sampler contract mismatch; using legacy fallback");
             glDeleteProgram(Program);
             Program = 0;
             return false;
@@ -192,7 +183,7 @@ struct BMDModernRuntime::Impl
         ViewLocation = glGetUniformLocation(Program, "uView");
         if (ProjectionLocation < 0 || ViewLocation < 0)
         {
-            ModernLog("camera uniforms missing; legacy fallback remains active");
+            ModernLog("camera uniforms missing; using legacy fallback");
             glDeleteProgram(Program);
             Program = 0;
             return false;
@@ -205,9 +196,9 @@ struct BMDModernRuntime::Impl
     ModernMeshGpu* GetMesh(BMD* model, int meshIndex)
     {
         MeshKey key = { model, meshIndex };
-        std::unordered_map<MeshKey, std::unique_ptr<ModernMeshGpu>, MeshKeyHash>::iterator it = Meshes.find(key);
-        if (it != Meshes.end())
-            return it->second.get();
+        std::unordered_map<MeshKey, std::unique_ptr<ModernMeshGpu>, MeshKeyHash>::iterator found = Meshes.find(key);
+        if (found != Meshes.end())
+            return found->second.get();
 
         if (model == NULL || meshIndex < 0 || meshIndex >= model->NumMeshs)
             return NULL;
@@ -228,8 +219,7 @@ struct BMDModernRuntime::Impl
 
 BMDModernRuntime& BMDModernRuntime::Instance()
 {
-    // Intentionally process-lifetime: OpenGL resources must not be destroyed by
-    // static destructors after the WGL context has already been released.
+    // Process-lifetime on purpose: do not destroy GL objects after WGL teardown.
     static BMDModernRuntime* instance = new BMDModernRuntime();
     return *instance;
 }
@@ -250,98 +240,52 @@ bool BMDModernRuntime::IsEnabled() const
     return m_Impl != NULL && m_Impl->Enabled;
 }
 
-void BMDModernRuntime::PrepareFrame(const OGL330MODEL::MeshVAO& commands)
-{
-    if (m_Impl == NULL)
-        return;
-
-    m_Impl->FrameReady = false;
-    m_Impl->Submissions.clear();
-
-    if (!m_Impl->Enabled || commands.empty() || !m_Impl->EnsureProgram())
-        return;
-
-    m_Impl->Skeleton.BeginFrame();
-
-    for (OGL330MODEL::MeshVAO::const_iterator it = commands.begin(); it != commands.end(); ++it)
-    {
-        const OGL330MODEL::RenderMeshVAO& command = *it;
-        if (command.m_OldBMD == NULL || !command.m_ModernBoneMatrices ||
-            command.m_ModernBoneMatrices->empty() || command.m_OldBMD->NumBones <= 0)
-            continue;
-
-        const std::vector<float>* key = command.m_ModernBoneMatrices.get();
-        if (m_Impl->Submissions.find(key) != m_Impl->Submissions.end())
-            continue;
-
-        const std::uint32_t boneCount = static_cast<std::uint32_t>(command.m_OldBMD->NumBones);
-        if (command.m_ModernBoneMatrices->size() < static_cast<size_t>(boneCount) * 12u)
-            continue;
-
-        const BMDModernSkeletonSubmission submission = BMDModernSkeletonPose::Stage(
-            m_Impl->Skeleton,
-            command.m_ModernBoneMatrices->data(),
-            boneCount,
-            command.m_OldBMD->m_fRequestScale);
-
-        if (submission.Success)
-            m_Impl->Submissions.insert(std::make_pair(key, submission));
-    }
-
-    if (m_Impl->Submissions.empty())
-        return;
-
-    if (!m_Impl->SkeletonTexture.Upload(m_Impl->Skeleton))
-    {
-        ModernLog("BonesTexture upload failed; legacy fallback remains active");
-        return;
-    }
-
-    m_Impl->FrameReady = true;
-}
-
 bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
 {
-    if (m_Impl == NULL || !m_Impl->Enabled || !m_Impl->FrameReady || m_Impl->Program == 0)
+    if (m_Impl == NULL || !m_Impl->Enabled || !m_Impl->EnsureProgram())
         return false;
 
-    if (command.m_OldBMD == NULL || command.m_OldBMD->NumBones <= 1 ||
-        !command.m_ModernBoneMatrices || command.m_TextureID < 0)
+    BMD* model = command.m_OldBMD;
+    if (model == NULL || model->NumBones <= 1 || model->m_pLastBoneMatrix == NULL ||
+        command.m_TextureID < 0)
         return false;
 
-    // Phase 7 first-light is intentionally restricted to the ordinary Model
-    // shader and texture-only render state. Every special material remains on
-    // the proven legacy path until the base skinning draw is validated.
-    if (command.m_Shader != OGL330MODEL::GetBaseModelShaderProgram())
-        return false;
-
+    // First-light supports only the ordinary texture path. BlendMesh exposes
+    // meshUV.z=1 in the legacy frontend, while chrome/metal/oil/shadow/etc. all
+    // carry flags outside this small allow-list and therefore fall back.
     const int allowedFlags = RENDER_TEXTURE | RENDER_NODEPTH;
     if ((command.m_FlagRender & RENDER_TEXTURE) == 0 ||
-        (command.m_FlagRender & ~allowedFlags) != 0)
+        (command.m_FlagRender & ~allowedFlags) != 0 ||
+        command.m_meshUV.z != 0.0f || command.m_meshUV.x != 0.0f || command.m_meshUV.y != 0.0f)
         return false;
 
-    const std::vector<float>* submissionKey = command.m_ModernBoneMatrices.get();
-    std::unordered_map<const std::vector<float>*, BMDModernSkeletonSubmission>::const_iterator submissionIt =
-        m_Impl->Submissions.find(submissionKey);
-    if (submissionIt == m_Impl->Submissions.end() || !submissionIt->second.Success)
+    if (m_Impl->SelectedModel != NULL && m_Impl->SelectedModel != model)
         return false;
 
-    if (m_Impl->SelectedModel != NULL && m_Impl->SelectedModel != command.m_OldBMD)
-        return false;
-
-    ModernMeshGpu* mesh = m_Impl->GetMesh(command.m_OldBMD, command.m_IndexMesh);
+    ModernMeshGpu* mesh = m_Impl->GetMesh(model, command.m_IndexMesh);
     if (mesh == NULL || !mesh->Vao.IsValid())
         return false;
 
+    // Validation-stage policy: one skeleton upload per experimental draw. This
+    // avoids changing the proven legacy batching contract. Once visuals match,
+    // this moves to one atlas upload per FlushAllMesh().
+    m_Impl->Skeleton.BeginFrame();
+    const BMDModernSkeletonSubmission submission = BMDModernSkeletonPose::Stage(
+        m_Impl->Skeleton,
+        &model->m_pLastBoneMatrix[0][0][0],
+        static_cast<std::uint32_t>(model->NumBones),
+        model->m_fRequestScale);
+    if (!submission.Success || !m_Impl->SkeletonTexture.Upload(m_Impl->Skeleton))
+        return false;
+
     BMDModernInstanceParams params;
-    params.Translate = command.m_ModernTranslate;
-    params.BodyScale = command.m_OldBMD->BodyScale;
-    params.BodyOrigin[0] = command.m_OldBMD->BodyOrigin[0];
-    params.BodyOrigin[1] = command.m_OldBMD->BodyOrigin[1];
-    params.BodyOrigin[2] = command.m_OldBMD->BodyOrigin[2];
+    params.Translate = model->m_bLastTranslate;
+    params.BodyScale = model->BodyScale;
+    params.BodyOrigin[0] = model->BodyOrigin[0];
+    params.BodyOrigin[1] = model->BodyOrigin[1];
+    params.BodyOrigin[2] = model->BodyOrigin[2];
     params.NormalOffset = 0.0f;
     params.EnableLight = command.m_isLight;
-
     const bool alphaTexture = Bitmaps[command.m_TextureID].Components == 4;
     params.MinAlpha = (command.m_isAlpha < 0.99f || alphaTexture) ? 0.25f : 0.0f;
     params.BlendUV[0] = 0.0f;
@@ -356,7 +300,7 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
     params.ShadowLight[1] = 0.0f;
     params.ShadowLight[2] = 0.0f;
     params.ShadowLight[3] = 0.0f;
-    params.BoneIndex = submissionIt->second.BoneIndex;
+    params.BoneIndex = submission.BoneIndex;
 
     const BMDModernInstance instance = BMDModernInstanceBuilder::Build(params);
     if (!m_Impl->InstanceBuffer.UploadAndAttach(mesh->Vao.GetVertexArray(), &instance, 1))
@@ -371,8 +315,8 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
     glUniformMatrix4fv(m_Impl->ProjectionLocation, 1, GL_FALSE, projection);
     glUniformMatrix4fv(m_Impl->ViewLocation, 1, GL_FALSE, view);
 
-    const GLuint materialTexture = Bitmaps[command.m_TextureID].TextureNumber;
-    if (!m_Impl->Bindings.Bind(materialTexture, m_Impl->SkeletonTexture))
+    if (!m_Impl->Bindings.Bind(Bitmaps[command.m_TextureID].TextureNumber,
+                               m_Impl->SkeletonTexture))
     {
         glUseProgram(0);
         return false;
@@ -389,24 +333,14 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
 
     if (m_Impl->SelectedModel == NULL)
     {
-        m_Impl->SelectedModel = command.m_OldBMD;
-        char message[160];
+        m_Impl->SelectedModel = model;
+        char message[160] = { 0 };
         sprintf_s(message, "first modern BMD selected: %s (%d bones)",
-                  command.m_OldBMD->Name,
-                  static_cast<int>(command.m_OldBMD->NumBones));
+                  model->Name, static_cast<int>(model->NumBones));
         ModernLog(message);
     }
 
     return true;
-}
-
-void BMDModernRuntime::EndFrame()
-{
-    if (m_Impl == NULL)
-        return;
-
-    m_Impl->FrameReady = false;
-    m_Impl->Submissions.clear();
 }
 
 #endif // jdk_shader_local330
