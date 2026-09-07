@@ -1,7 +1,8 @@
 #include "stdafx.h"
 #include "SkeletonBuffer.h"
+#include "SkeletonEncoder.h"
 
-#include <cstring>
+#include <algorithm>
 
 SkeletonBuffer::SkeletonBuffer(StorageMode mode)
     : m_Mode(mode)
@@ -41,25 +42,44 @@ bool SkeletonBuffer::UploadAffine3x4(const Allocation& allocation,
                                      const float* matrices,
                                      std::uint32_t matrixCount)
 {
-    if (m_Mode != StorageMode::Matrix4x4 ||
-        !allocation.IsValid() ||
+    if (!allocation.IsValid() ||
         allocation.Generation != m_Generation ||
         matrices == nullptr ||
-        matrixCount < allocation.BoneCount)
+        matrixCount < allocation.BoneCount ||
+        allocation.BaseBone + allocation.BoneCount > m_BoneCount)
+    {
+        return false;
+    }
+
+    // SkeletonEncoder is the single source of truth for CPU BMD affine memory
+    // -> shader texel layout. Do not memcpy the 3x4 matrix directly here:
+    // Matrix4x4 requires an explicit transpose and QPS requires decomposition.
+    std::vector<float> encoded;
+    switch (m_Mode)
+    {
+    case StorageMode::Matrix4x4:
+        SkeletonEncoder::EncodeMatrix4x4(matrices, allocation.BoneCount, encoded);
+        break;
+
+    case StorageMode::QuaternionPositionScale:
+        if (!SkeletonEncoder::EncodeQuaternionPositionScale(
+                matrices, allocation.BoneCount, encoded))
+        {
+            return false;
+        }
+        break;
+
+    default:
+        return false;
+    }
+
+    const size_t floatsPerBone = static_cast<size_t>(GetTexelsPerBone()) * 4u;
+    const size_t expectedFloats = static_cast<size_t>(allocation.BoneCount) * floatsPerBone;
+    if (encoded.size() != expectedFloats)
         return false;
 
-    for (std::uint32_t bone = 0; bone < allocation.BoneCount; ++bone)
-    {
-        const float* source = matrices + static_cast<size_t>(bone) * 12u;
-        float* destination = m_Texels.data()
-            + static_cast<size_t>(allocation.BaseBone + bone) * MatrixFloatsPerBone;
-
-        std::memcpy(destination, source, sizeof(float) * 12u);
-        destination[12] = 0.0f;
-        destination[13] = 0.0f;
-        destination[14] = 0.0f;
-        destination[15] = 1.0f;
-    }
+    const size_t destinationOffset = static_cast<size_t>(allocation.BaseBone) * floatsPerBone;
+    std::copy(encoded.begin(), encoded.end(), m_Texels.begin() + destinationOffset);
 
     m_Dirty = true;
     return true;
