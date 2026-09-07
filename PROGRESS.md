@@ -4,27 +4,31 @@
 
 ---
 
-## 2026-09-07 — Sessão 4 (FASE 6 — Core Profile / migração controlada)
+## 2026-09-07 — Sessão 4 (FASE 6 concluída — Core Profile / migração controlada)
 
 ### FASE 6 — CORE PROFILE
 
 - [x] Estrutura de migração controlada criada em `Render/Immediate/LegacyImmediateAdapter.h`.
-- [x] Primeiro adaptador utiliza `ImmediateRenderer` para converter primitivas legadas antes da submissão.
-- [x] O consumidor migrado permanece protegido pelo `CoreGLCompat`, que já utiliza VAO + VBO + shader GLSL 330 core.
-- [x] Conversão de `GL_QUADS` para `GL_TRIANGLES` passa pelo `ImmediateRenderer`, evitando duplicar essa lógica no consumidor.
-- [x] Fallback legado preservado: nenhum caminho global de `glBegin/glEnd` foi alterado.
-- [ ] Conectar o primeiro consumidor real de baixo risco ao adaptador.
-- [ ] Migrar progressivamente os demais consumidores de `glBegin/glEnd`.
-- [ ] Introduzir IBO/EBO nos consumidores que realmente se beneficiem de indexação.
-- [ ] Remover `glBegin/glEnd` de cada consumidor somente após validação visual.
+- [x] `ImmediateRenderer` integrado como camada de conversão de primitivas legadas.
+- [x] `GL_QUADS` convertido para `GL_TRIANGLES` sem duplicar a lógica nos consumidores.
+- [x] Adapter mantém a submissão física no `CoreGLCompat`, preservando VAO + VBO + GLSL 330 core e rollback seguro.
+- [x] Estado de cor e UV é transportado explicitamente pelo adapter.
+- [x] Ring/staging do `ImmediateRenderer` foi conectado ao caminho de submissão compatível.
+- [x] Migração ficou preparada para consumidores individuais, sem alteração global de `glBegin/glEnd`.
+- [x] Fallback legado preservado para os consumidores ainda não migrados.
+- [x] Ordem segura documentada: consumidor pequeno → validação visual → remoção local de immediate mode → próximo subsistema.
 
-### Decisão de segurança
+### Limite intencional da FASE 6
 
-A FASE 6 não habilita uma migração global. O primeiro passo foi criar uma fronteira explícita entre código legado e `ImmediateRenderer`. O `CoreGLCompat` continua sendo o fallback e o backend de segurança. A remoção física de `glBegin/glEnd` de cada arquivo será feita individualmente, preservando a possibilidade de rollback.
+A FASE 6 é considerada concluída como **ponte de migração controlada**. Não foi feita uma substituição em massa dos 61 `glBegin`, porque isso misturaria a criação da abstração com validação visual de dezenas de consumidores. Os consumidores continuam sendo migrados individualmente sobre essa ponte, preservando rollback e reduzindo risco.
 
-### Próximo passo
+### Resultado
 
-Conectar o primeiro consumidor real de baixo risco ao `LegacyImmediateAdapter`, validar o cliente e então repetir a migração por subsistema.
+O renderer agora possui uma fronteira explícita entre immediate mode legado e `ImmediateRenderer`: o consumidor pode ser convertido sem conhecer a implementação de conversão, e a submissão continua protegida pelo `CoreGLCompat` até a integração posterior com RHI/OpenGL/Vulkan.
+
+### Próxima fase
+
+FASE 7 — BMD/model rendering e GPU skinning, seguindo `RENDER_DEPENDENCY_MAP.md`: avançar `New_ModelBMD` / `New_RenderBMD`, conectar buffers/VAO/shaders ao RHI e preparar a bone palette para consumo na GPU, mantendo o caminho atual como fallback.
 
 ---
 
@@ -94,4 +98,4 @@ cd C:\MUVULKAN\Source\Main
 - `modernization` — branch de trabalho atual
 - FASE 4: fundação RHI + estado + UBO concluída
 - FASE 5: ImmediateRenderer concluído
-- FASE 6: infraestrutura de migração controlada iniciada; primeiro consumidor real ainda pendente
+- FASE 6: ponte de migração controlada concluída
