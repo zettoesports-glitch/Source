@@ -353,6 +353,9 @@ CGMMeshShader::CGMMeshShader()
 	memset(m_vLightPos, 0, sizeof(vec3_t));
 	memset(m_vLightDir, 0, sizeof(vec3_t));
 	m_finalBone = NULL;
+	m_CurrentModernTranslate = false;
+	m_CurrentModernBodyScale = 1.0f;
+	m_CurrentModernBodyOrigin.x = m_CurrentModernBodyOrigin.y = m_CurrentModernBodyOrigin.z = 0.0f;
 }
 
 CGMMeshShader::~CGMMeshShader()
@@ -364,6 +367,9 @@ void CGMMeshShader::Release()
 {
 	m_Data.clear();
 	m_CurrentBonePalette.reset();
+	m_CurrentModernTranslate = false;
+	m_CurrentModernBodyScale = 1.0f;
+	m_CurrentModernBodyOrigin.x = m_CurrentModernBodyOrigin.y = m_CurrentModernBodyOrigin.z = 0.0f;
 }
 
 bool CGMMeshShader::IsAlpha(int iType)
@@ -697,6 +703,11 @@ void CGMMeshShader::AddMeshCommand(BMD* pSrc, int idx, int RFlag, float Alpha, i
 
 		MakeShaderType(iShaderType, rNew.m_isLight, IsAlpha(RFlag), BlendU, BlendV, rNew);
 		rNew.m_BonePalette = m_CurrentBonePalette;
+		rNew.m_ModernTranslate = m_CurrentModernTranslate;
+		rNew.m_ModernBodyScale = m_CurrentModernBodyScale;
+		rNew.m_ModernBodyOrigin.x = m_CurrentModernBodyOrigin.x;
+		rNew.m_ModernBodyOrigin.y = m_CurrentModernBodyOrigin.y;
+		rNew.m_ModernBodyOrigin.z = m_CurrentModernBodyOrigin.z;
 	}
 }
 
@@ -704,6 +715,22 @@ void CGMMeshShader::AddBoneTransform(BMD* model, float(*BoneMatrix)[3][4], bool 
 {
 	m_Transfrom = trans;
 	m_finalBone = BoneMatrix[0][0];
+
+	m_CurrentModernTranslate = trans;
+	m_CurrentModernBodyScale = (trans && model != NULL) ? model->BodyScale : 1.0f;
+	if (trans && model != NULL)
+	{
+		m_CurrentModernBodyOrigin.x = model->BodyOrigin[0];
+		m_CurrentModernBodyOrigin.y = model->BodyOrigin[1];
+		m_CurrentModernBodyOrigin.z = model->BodyOrigin[2];
+	}
+	else
+	{
+		m_CurrentModernBodyOrigin.x = 0.0f;
+		m_CurrentModernBodyOrigin.y = 0.0f;
+		m_CurrentModernBodyOrigin.z = 0.0f;
+	}
+
 	if (!m_CurrentBonePalette || m_CurrentBonePalette.use_count() != 1)
 		m_CurrentBonePalette.reset(new std::vector<float>());
 	BuildModelBonePalette(model, m_finalBone, trans, *m_CurrentBonePalette);

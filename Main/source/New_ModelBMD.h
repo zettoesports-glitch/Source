@@ -110,6 +110,13 @@ namespace OGL330MODEL
 		float* m_finalBone;
 		std::shared_ptr<std::vector<float> > m_CurrentBonePalette;
 
+		// Capture the BMD model transform at the same instant as the bone palette.
+		// Do not read BodyScale/BodyOrigin back from BMD during a later flush: the
+		// BMD asset is shared and those fields can already belong to another object.
+		bool	m_CurrentModernTranslate;
+		float	m_CurrentModernBodyScale;
+		mvec3	m_CurrentModernBodyOrigin;
+
 		CGMMeshShader(const CGMMeshShader&);
 		CGMMeshShader& operator=(const CGMMeshShader&);
 
