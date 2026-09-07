@@ -11,9 +11,15 @@ public:
 
     bool IsEnabled() const;
 
-    // Deliberately narrow first-light path. It stages the current BMD's final
-    // BoneTransform into BonesTexture and draws only the first eligible base
-    // textured BMD. False always means: execute the legacy renderer unchanged.
+    // Pre-stages every eligible immutable command palette into one contiguous
+    // skeleton atlas and uploads BonesTexture once for the whole FlushAllMesh().
+    // False keeps the entire batch on the unchanged legacy renderer.
+    bool PrepareBatch(const OGL330MODEL::MeshVAO& commands);
+    void FinishBatch();
+
+    // Draws one command using the BaseBone prepared by PrepareBatch(). Any
+    // unsupported material/resource returns false and immediately falls back to
+    // the existing u_Bones renderer for that command.
     bool TryRender(const OGL330MODEL::RenderMeshVAO& command);
 
 private:
