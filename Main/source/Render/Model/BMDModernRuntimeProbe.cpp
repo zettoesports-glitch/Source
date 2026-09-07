@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "BMDModernRuntimeProbe.h"
 
 #if jdk_shader_local330
 
@@ -42,6 +43,11 @@ namespace
                (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
     }
 
+    static std::string GetExecutableDirectory()
+    {
+        return GetDirectory(GetExecutablePath());
+    }
+
     struct BMDModernRuntimeBootstrapProbe
     {
         BMDModernRuntimeBootstrapProbe()
@@ -66,7 +72,7 @@ namespace
             if (!log.is_open())
                 return;
 
-            log << "[ModernBMD-Probe] build=2026-09-07-complex-diagnostics-v1\n";
+            log << "[ModernBMD-Probe] build=2026-09-07-complex-diagnostics-v2\n";
             log << "exe=" << exePath << "\n";
             log << "cwd=" << cwd << "\n";
             log << "config=" << configPath
@@ -76,10 +82,26 @@ namespace
                 << " exists=" << (FileExists(vertexShaderPath) ? 1 : 0) << "\n";
             log << "fragmentShader=" << fragmentShaderPath
                 << " exists=" << (FileExists(fragmentShaderPath) ? 1 : 0) << "\n";
+            log << "renderEntry=0\n";
         }
     };
 
     static BMDModernRuntimeBootstrapProbe g_BMDModernRuntimeBootstrapProbe;
+}
+
+void BMDModernProbeMarkRenderEntry()
+{
+    static bool marked = false;
+    if (marked)
+        return;
+    marked = true;
+
+    const std::string logPath = JoinPath(GetExecutableDirectory(), "ModernBMD_render.log");
+    std::ofstream log(logPath.c_str(), std::ios::out | std::ios::trunc);
+    if (!log.is_open())
+        return;
+
+    log << "[ModernBMD-Probe] CGMShaderBMD::Render reached\n";
 }
 
 #endif // jdk_shader_local330
