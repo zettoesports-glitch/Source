@@ -3,6 +3,8 @@
 #include "../../ZzzBMD.h"
 
 #include <algorithm>
+#include <fstream>
+#include <limits>
 
 namespace
 {
@@ -59,6 +61,39 @@ namespace
 
         return out;
     }
+
+    static void LogMeshScan(int sourceVertices,
+                            int sourceTriangles,
+                            std::uint32_t referencedCorners,
+                            std::uint32_t outputVertices,
+                            std::uint32_t outputIndices,
+                            int minBone,
+                            int maxBone,
+                            std::uint32_t negativeBoneRefs,
+                            std::uint32_t invalidVertexRefs,
+                            std::uint32_t invalidTexcoordRefs,
+                            std::uint32_t invalidNormalRefs)
+    {
+        char message[512] = { 0 };
+        sprintf_s(message,
+                  "[ModernBMD] mesh bone scan: srcVertices=%d triangles=%d corners=%u outVertices=%u indices=%u minBone=%d maxBone=%d negativeBoneRefs=%u invalidVertexRefs=%u invalidTexcoordRefs=%u invalidNormalRefs=%u\n",
+                  sourceVertices,
+                  sourceTriangles,
+                  referencedCorners,
+                  outputVertices,
+                  outputIndices,
+                  minBone,
+                  maxBone,
+                  negativeBoneRefs,
+                  invalidVertexRefs,
+                  invalidTexcoordRefs,
+                  invalidNormalRefs);
+
+        OutputDebugStringA(message);
+        std::ofstream logFile("Data\\ModernBMD.log", std::ios::out | std::ios::app);
+        if (logFile.is_open())
+            logFile << message;
+    }
 }
 
 bool BuildBMDModernMesh(const _Mesh_t& mesh, BMDModernMeshData& outMesh)
@@ -74,6 +109,14 @@ bool BuildBMDModernMesh(const _Mesh_t& mesh, BMDModernMeshData& outMesh)
     outMesh.Vertices.reserve(static_cast<size_t>(mesh.NumTriangles) * 3u);
     outMesh.Indices.reserve(static_cast<size_t>(mesh.NumTriangles) * 3u);
 
+    int minBone = (std::numeric_limits<int>::max)();
+    int maxBone = (std::numeric_limits<int>::min)();
+    std::uint32_t referencedCorners = 0;
+    std::uint32_t negativeBoneRefs = 0;
+    std::uint32_t invalidVertexRefs = 0;
+    std::uint32_t invalidTexcoordRefs = 0;
+    std::uint32_t invalidNormalRefs = 0;
+
     for (int triangleIndex = 0; triangleIndex < mesh.NumTriangles; ++triangleIndex)
     {
         const Triangle_t& triangle = mesh.Triangles[triangleIndex];
@@ -81,12 +124,33 @@ bool BuildBMDModernMesh(const _Mesh_t& mesh, BMDModernMeshData& outMesh)
 
         for (int corner = 0; corner < polygon; ++corner)
         {
+            ++referencedCorners;
+
             const short v = triangle.VertexIndex[corner];
             const short t = triangle.TexCoordIndex[corner];
             const short n = triangle.NormalIndex[corner];
 
             if (v < 0 || v >= mesh.NumVertices)
+            {
+                ++invalidVertexRefs;
                 continue;
+            }
+
+            const int bone = static_cast<int>(mesh.Vertices[v].Node);
+            if (bone < 0)
+            {
+                ++negativeBoneRefs;
+            }
+            else
+            {
+                minBone = (std::min)(minBone, bone);
+                maxBone = (std::max)(maxBone, bone);
+            }
+
+            if (t < 0 || t >= mesh.NumTexCoords || mesh.TexCoords == NULL)
+                ++invalidTexcoordRefs;
+            if (n < 0 || n >= mesh.NumNormals || mesh.Normals == NULL)
+                ++invalidNormalRefs;
 
             std::uint32_t index = 0;
             bool found = false;
@@ -110,6 +174,32 @@ bool BuildBMDModernMesh(const _Mesh_t& mesh, BMDModernMeshData& outMesh)
 
             outMesh.Indices.push_back(index);
         }
+    }
+
+    if (minBone == (std::numeric_limits<int>::max)())
+        minBone = -1;
+    if (maxBone == (std::numeric_limits<int>::min)())
+        maxBone = -1;
+
+    LogMeshScan(mesh.NumVertices,
+                mesh.NumTriangles,
+                referencedCorners,
+                static_cast<std::uint32_t>(outMesh.Vertices.size()),
+                static_cast<std::uint32_t>(outMesh.Indices.size()),
+                minBone,
+                maxBone,
+                negativeBoneRefs,
+                invalidVertexRefs,
+                invalidTexcoordRefs,
+                invalidNormalRefs);
+
+    // Invalid source vertex references or negative bone nodes are unsafe for
+    // the modern texture-backed skeleton path. Reject the mesh so the caller
+    // automatically falls back to the established legacy renderer.
+    if (invalidVertexRefs != 0 || negativeBoneRefs != 0)
+    {
+        outMesh.Clear();
+        return false;
     }
 
     return !outMesh.Empty();
