@@ -397,7 +397,6 @@ void CGMMeshShader::MakeShaderType(int iShaderType, bool enableLight, bool bAlph
 		bodyLight.w = r.m_isAlpha;
 	}
 
-	// Fixed-function glColor clamps RGB before the texture stage.
 	bodyLight.x = bodyLight.x < 0.f ? 0.f : (bodyLight.x > 1.f ? 1.f : bodyLight.x);
 	bodyLight.y = bodyLight.y < 0.f ? 0.f : (bodyLight.y > 1.f ? 1.f : bodyLight.y);
 	bodyLight.z = bodyLight.z < 0.f ? 0.f : (bodyLight.z > 1.f ? 1.f : bodyLight.z);
@@ -719,18 +718,51 @@ void CGMMeshShader::FlushAllMesh()
 
 	OGL330MODEL::BeginUniformBatch();
 
-	// Stage all immutable per-command palettes before the first draw. The modern
-	// path uploads one BonesTexture atlas for this complete flush; unsupported
-	// commands simply continue through the unchanged legacy renderer below.
-	if (gBMDModernRuntime.IsEnabled())
-		gBMDModernRuntime.PrepareBatch(m_Data);
+	// Do not mix the modern base-texture pass with legacy surface overlays on
+	// the same object. Chrome/Metal/Oil/bright passes redraw the same skinned
+	// surface and depend on depth matching the base pass exactly. Until those
+	// materials are migrated to the modern dispatcher, keep the whole object on
+	// the legacy renderer to avoid frame-to-frame z fighting / flashing.
+	bool modernBatchCompatible = true;
+	for (MeshVAO::const_iterator iter = m_Data.begin(); iter != m_Data.end(); ++iter)
+	{
+		const RenderMeshVAO& command = *iter;
+		const int flags = command.m_FlagRender;
+		const int supportedFlags = RENDER_TEXTURE | RENDER_NODEPTH;
+		const bool baseTexture = (flags & RENDER_TEXTURE) == RENDER_TEXTURE;
+		const bool supportedBase = baseTexture && ((flags & ~supportedFlags) == 0) &&
+			command.m_meshUV.x == 0.0f && command.m_meshUV.y == 0.0f && command.m_meshUV.z == 0.0f;
+
+		if (!supportedBase)
+		{
+			modernBatchCompatible = false;
+			break;
+		}
+	}
+
+	bool modernBatchPrepared = false;
+	if (gBMDModernRuntime.IsEnabled() && modernBatchCompatible)
+	{
+		modernBatchPrepared = gBMDModernRuntime.PrepareBatch(m_Data);
+	}
+	else if (gBMDModernRuntime.IsEnabled() && !modernBatchCompatible)
+	{
+		static bool coherenceGuardLogged = false;
+		if (!coherenceGuardLogged)
+		{
+			coherenceGuardLogged = true;
+			std::ofstream logFile("Data\\ModernBMD.log", std::ios::out | std::ios::app);
+			if (logFile.is_open())
+				logFile << "[ModernBMD] material coherence guard active: object has legacy overlay/pass; keeping complete flush on legacy renderer to prevent mixed-depth flashing\n";
+		}
+	}
 
 	for (MeshVAO::iterator iter = m_Data.begin(); iter != m_Data.end(); ++iter)
 	{
 		g_NewRenderBMD->Render(*iter);
 	}
 
-	if (gBMDModernRuntime.IsEnabled())
+	if (modernBatchPrepared)
 		gBMDModernRuntime.FinishBatch();
 
 	m_Data.clear();
