@@ -7,11 +7,14 @@
 #include "TextureScript.h"
 #include "Utilities/Log/muConsoleDebug.h"
 #include "Render/Model/BMDModernRuntime.h"
+#include "Render/Model/BMDModernRuntimeProbe.h"
 
 CGMNewRenderBMD* g_NewRenderBMD = NULL;
 
 void CGMShaderBMD::Render(OGL330MODEL::RenderMeshVAO& r)
 {
+	BMDModernProbeMarkRenderEntry();
+
 	BMD& rModel = *r.m_OldBMD;
 	VAOMesh& rNewMesh = rModel.New_Meshs[r.m_IndexMesh];
 	if (!rNewMesh.VAO)
