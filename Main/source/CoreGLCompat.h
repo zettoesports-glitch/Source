@@ -1,5 +1,12 @@
 #pragma once
 
+#if jdk_shader_local330
+// Implemented by Render/Model/BMDModernObjectGuard.cpp. Kept as a narrow hook
+// so legacy state helpers cannot re-enable culling while the affected
+// merchant_f asset is inside its scoped double-sided render override.
+bool BMDModernLegacyCullSuppressed();
+#endif
+
 namespace CoreGLCompat
 {
 	bool Initialize();
@@ -74,6 +81,15 @@ namespace CoreGLCompat
 	void DrawSphere(float radius, int slices, int stacks);
 
 	void ApplyFogUniforms(GLuint program);
+
+	inline void EnableFiltered(GLenum capability)
+	{
+#if jdk_shader_local330
+		if (capability == GL_CULL_FACE && BMDModernLegacyCullSuppressed())
+			return;
+#endif
+		Enable(capability);
+	}
 }
 
 #ifndef CORE_GL_COMPAT_IMPLEMENTATION
@@ -101,7 +117,7 @@ namespace CoreGLCompat
 #define gluPerspective CoreGLCompat::Perspective
 #define gluOrtho2D CoreGLCompat::Ortho2D
 #define glGetFloatv CoreGLCompat::GetFloatv
-#define glEnable CoreGLCompat::Enable
+#define glEnable CoreGLCompat::EnableFiltered
 #define glDisable CoreGLCompat::Disable
 #define glAlphaFunc CoreGLCompat::AlphaFunc
 #define glFogf CoreGLCompat::Fogf
