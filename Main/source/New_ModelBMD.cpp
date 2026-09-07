@@ -3,6 +3,7 @@
 #include <filesystem> // C++17
 #include <iostream>
 #include <sstream>
+#include <unordered_map>
 #if jdk_shader_local330
 #include "ZzzBMD.h"
 #include "ZzzObject.h"
@@ -49,6 +50,7 @@ namespace OGL330MODEL
 	static bool g_HasBatchMatrices = false;
 	static std::unordered_map<GLuint, bool> g_MatrixUploaded;
 	static std::unordered_map<GLuint, const void*> g_BonePaletteUploaded;
+	static std::unordered_map<const BMD*, int> g_RequiredPaletteBoneCounts;
 
 	static ShaderUniformLocations& GetUniformLocations(GLuint shaderID)
 	{
@@ -76,16 +78,48 @@ namespace OGL330MODEL
 		return g_UniformLocations.insert(std::make_pair(shaderID, locations)).first->second;
 	}
 
+	static int GetRequiredPaletteBoneCount(BMD* model)
+	{
+		if (model == NULL)
+			return 0;
+
+		std::unordered_map<const BMD*, int>::const_iterator cached = g_RequiredPaletteBoneCounts.find(model);
+		if (cached != g_RequiredPaletteBoneCounts.end())
+			return cached->second;
+
+		int requiredBoneCount = max(0, static_cast<int>(model->NumBones));
+		for (int meshIndex = 0; meshIndex < model->NumMeshs; ++meshIndex)
+		{
+			Mesh_t& mesh = model->Meshs[meshIndex];
+			if (mesh.Vertices == NULL)
+				continue;
+
+			for (int vertexIndex = 0; vertexIndex < mesh.NumVertices; ++vertexIndex)
+			{
+				const int node = static_cast<int>(mesh.Vertices[vertexIndex].Node);
+				if (node >= 0)
+					requiredBoneCount = max(requiredBoneCount, node + 1);
+			}
+		}
+
+		requiredBoneCount = min(requiredBoneCount, static_cast<int>(MAX_BONES));
+		g_RequiredPaletteBoneCounts[model] = requiredBoneCount;
+		return requiredBoneCount;
+	}
+
 	static void BuildModelBonePalette(BMD* model, const float* bone, bool translate, std::vector<float>& palette)
 	{
 		palette.clear();
 
-		if (model == NULL || bone == NULL || model->NumBones <= 0)
+		if (model == NULL || bone == NULL)
 		{
 			return;
 		}
 
-		int boneCount = min(static_cast<int>(model->NumBones), 200);
+		const int boneCount = GetRequiredPaletteBoneCount(model);
+		if (boneCount <= 0)
+			return;
+
 		float resultScale = translate ? model->BodyScale : 1.0f;
 		float scalePre = resultScale;
 		bool appScale = (model->m_fRequestScale != 1.0f && model->m_fRequestScale != 0.0f);
