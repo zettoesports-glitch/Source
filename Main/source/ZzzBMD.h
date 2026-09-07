@@ -141,9 +141,7 @@ typedef struct _VertexBMD
 	vec3_t m_vPos;
 	vec3_t m_vNorm;
 	vec2_t m_vTex;
-	// BMD stores one node for position and one node for normal.
-	// This matches the shared OpenGL/Vulkan shader contract: uvec2 Bones.
-	GLuint m_iBones[2];
+	GLuint m_iBone;
 } VertexBMD;
 
 typedef struct _VAOMesh

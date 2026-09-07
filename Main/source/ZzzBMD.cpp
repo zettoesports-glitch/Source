@@ -1895,10 +1895,10 @@ void BMD::RenderMeshEffect ( int i, int iType, int iSubType, vec3_t Angle, VOID*
 			case MODEL_GOLEM_STONE:
 				if (rand_fps_check(45) && iEffectCount < 20)
 				{
-					if(iSubType == 0) {	//. ï¿½Ò°ï¿½
+					if(iSubType == 0) {	//. ºÒ°ñ·½
 						CreateEffect ( MODEL_GOLEM_STONE, VertexTransform[i][vi], angle, Light);
 					}
-					else if(iSubType == 1) {	//. ï¿½ï¿½ï¿½ï¿½
+					else if(iSubType == 1) {	//. µ¶°ñ·½
 						CreateEffect ( MODEL_BIG_STONE_PART1, VertexTransform[i][vi], angle, Light ,2);
 						CreateEffect ( MODEL_BIG_STONE_PART2, VertexTransform[i][vi], angle, Light ,2);
 					}
@@ -3377,9 +3377,8 @@ void BMD::UploadAllToGPU()
 		glEnableVertexAttribArray(2);
 		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(VertexBMD), (void*)offsetof(VertexBMD, m_vTex));
 
-		// Shared OpenGL/Vulkan contract: uvec2 Bones at location 3.
 		glEnableVertexAttribArray(3);
-		glVertexAttribIPointer(3, 2, GL_UNSIGNED_INT, sizeof(VertexBMD), (void*)offsetof(VertexBMD, m_iBones));
+		glVertexAttribIPointer(3, 1, GL_UNSIGNED_INT, sizeof(VertexBMD), (void*)offsetof(VertexBMD, m_iBone));
 
 		NewMesh.VertexCount = static_cast<GLuint>(NewMesh.VBuffer.size());
 		NewMesh.IndexCount = static_cast<GLuint>(NewMesh.IBuffer.size());
@@ -3479,41 +3478,25 @@ void BMD::ExtendVertex(Mesh_t* oM, VAOMesh* nM)
 	for (int i = 0; i < static_cast<int>(tbuf.size()); ++i)
 	{
 		TempVertex& tp = tbuf[i];
-		const short positionBone = oM->Vertices[tp.v].Node;
-		short normalBone = positionBone;
-		if (tp.n >= 0 && tp.n < oM->NumNormals && oM->Normals != NULL)
-		{
-			normalBone = oM->Normals[tp.n].Node;
-		}
-
+		short indexBone = oM->Vertices[tp.v].Node;
 		VectorCopy(oM->Vertices[tp.v].Position, Nvertex.m_vPos);
 
-		// Keep the mesh palette complete for both position and normal transforms.
-		auto AddBoneToContainer = [nM](short bone)
+		bool isbone = false;
+		for (int boneIndex = 0; boneIndex < static_cast<int>(nM->BoneContainer.size()); ++boneIndex)
 		{
-			if (bone < 0)
+			if (nM->BoneContainer[boneIndex] == indexBone)
 			{
-				return;
+				isbone = true;
+				break;
 			}
+		}
 
-			for (size_t boneIndex = 0; boneIndex < nM->BoneContainer.size(); ++boneIndex)
-			{
-				if (nM->BoneContainer[boneIndex] == bone)
-				{
-					return;
-				}
-			}
+		if (!isbone)
+		{
+			nM->BoneContainer.push_back(indexBone);
+		}
 
-			nM->BoneContainer.push_back(bone);
-		};
-
-		AddBoneToContainer(positionBone);
-		AddBoneToContainer(normalBone);
-
-		// Do not multiply by matrix-row offsets here. The shader contract consumes
-		// real BMD bone IDs and resolves the matrix through the skeleton resource.
-		Nvertex.m_iBones[0] = positionBone >= 0 ? static_cast<GLuint>(positionBone) : 0u;
-		Nvertex.m_iBones[1] = normalBone >= 0 ? static_cast<GLuint>(normalBone) : Nvertex.m_iBones[0];
+		Nvertex.m_iBone = static_cast<GLuint>(indexBone * 3);
 
 		Nvertex.m_vTex[0] = 0.0f;
 		Nvertex.m_vTex[1] = 0.0f;
