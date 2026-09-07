@@ -9,6 +9,7 @@
 #include "../OpenGL/OpenGLBMDModernBindings.h"
 #include "../OpenGL/OpenGLBMDModernInstanceBuffer.h"
 #include "../OpenGL/OpenGLBMDModernVAO.h"
+#include "../OpenGL/OpenGLShaderGlobalConstants.h"
 #include "../OpenGL/OpenGLSkeletonTexture.h"
 #include "ZzzBMD.h"
 #include "ZzzTexture.h"
@@ -48,12 +49,29 @@ namespace
         return stream.str();
     }
 
+    static std::string PrepareShaderSource(const std::string& source)
+    {
+        if (source.empty())
+            return source;
+
+        // SPIRV-Cross outputs stored in opengl-main intentionally omit the
+        // version directive. The client owns an OpenGL 4.6 Core context, so
+        // inject the desktop profile header only when the generated file does
+        // not already provide one. Hand-written experimental shaders keep their
+        // own #version line unchanged.
+        if (source.find("#version") != std::string::npos)
+            return source;
+
+        return std::string("#version 460 core\n") + source;
+    }
+
     static GLuint CompileStage(GLenum type, const std::string& source, const char* label)
     {
         if (source.empty())
             return 0;
 
-        const char* text = source.c_str();
+        const std::string prepared = PrepareShaderSource(source);
+        const char* text = prepared.c_str();
         GLuint shader = glCreateShader(type);
         glShaderSource(shader, 1, &text, NULL);
         glCompileShader(shader);
@@ -78,10 +96,7 @@ namespace
         const std::string vertexSource = ReadTextFile(vertexPath);
         const std::string fragmentSource = ReadTextFile(fragmentPath);
         if (vertexSource.empty() || fragmentSource.empty())
-        {
-            ModernLog("experimental shader files not found; using legacy fallback");
             return 0;
-        }
 
         GLuint vertex = CompileStage(GL_VERTEX_SHADER, vertexSource, vertexPath);
         if (vertex == 0)
@@ -114,6 +129,53 @@ namespace
         }
 
         return program;
+    }
+
+    static void SetIdentity(float* matrix)
+    {
+        if (matrix == NULL)
+            return;
+
+        std::memset(matrix, 0, sizeof(float) * 16u);
+        matrix[0] = 1.0f;
+        matrix[5] = 1.0f;
+        matrix[10] = 1.0f;
+        matrix[15] = 1.0f;
+    }
+
+    static void MultiplyColumnMajor4x4(const float* a, const float* b, float* out)
+    {
+        // OpenGL matrices returned by glGetFloatv are column-major. This builds
+        // Projection * View, matching the legacy shader expression
+        // gl_Position = uProj * uView * worldPosition.
+        for (int column = 0; column < 4; ++column)
+        {
+            for (int row = 0; row < 4; ++row)
+            {
+                float value = 0.0f;
+                for (int k = 0; k < 4; ++k)
+                    value += a[k * 4 + row] * b[column * 4 + k];
+                out[column * 4 + row] = value;
+            }
+        }
+    }
+
+    static void BuildGeneratedGlobals(const OGL330MODEL::RenderMeshVAO& command,
+                                      const float* projection,
+                                      const float* view,
+                                      Render::ShaderGlobalConstants& constants)
+    {
+        std::memset(&constants, 0, sizeof(constants));
+        SetIdentity(constants.Shadow);
+        SetIdentity(constants.Game2D);
+        constants.BillboardQ[3] = 1.0f;
+
+        MultiplyColumnMajor4x4(projection, view, constants.Game3D);
+
+        constants.LightPosition[0] = command.m_lightPosition.x;
+        constants.LightPosition[1] = command.m_lightPosition.y;
+        constants.LightPosition[2] = command.m_lightPosition.z;
+        constants.WorldTime = static_cast<float>(WorldTime);
     }
 
     static std::uint64_t HashSkeletonPose(const float* matrices, std::uint32_t boneCount)
@@ -183,11 +245,20 @@ struct BMDModernRuntime::Impl
         DiagnosticSkeleton = 1u << 4,
         DiagnosticInstance = 1u << 5,
         DiagnosticBindings = 1u << 6,
-        DiagnosticAtlas = 1u << 7
+        DiagnosticAtlas = 1u << 7,
+        DiagnosticGlobals = 1u << 8
+    };
+
+    enum class ProgramMode
+    {
+        None,
+        Generated,
+        Experimental
     };
 
     bool Enabled;
     bool AtlasMode;
+    bool UseGeneratedShaders;
     bool Diagnostics;
     int DiagnosticLimit;
     int DiagnosticMessages;
@@ -198,6 +269,7 @@ struct BMDModernRuntime::Impl
 
     bool ProgramAttempted;
     GLuint Program;
+    ProgramMode Mode;
     GLint ProjectionLocation;
     GLint ViewLocation;
 
@@ -215,6 +287,7 @@ struct BMDModernRuntime::Impl
     OpenGLSkeletonTexture SkeletonTexture;
     OpenGLBMDModernBindings Bindings;
     OpenGLBMDModernInstanceBuffer InstanceBuffer;
+    OpenGLShaderGlobalConstants GlobalConstants;
     std::unordered_map<MeshKey, std::unique_ptr<ModernMeshGpu>, MeshKeyHash> Meshes;
     std::unordered_map<BMD*, unsigned int> DiagnosticMasks;
 
@@ -223,6 +296,8 @@ struct BMDModernRuntime::Impl
                                         ".\\Data\\Custom\\config.ini") != 0)
         , AtlasMode(GetPrivateProfileIntA("ModernRenderer", "AtlasMode", 1,
                                           ".\\Data\\Custom\\config.ini") != 0)
+        , UseGeneratedShaders(GetPrivateProfileIntA("ModernRenderer", "UseGeneratedShaders", 1,
+                                                     ".\\Data\\Custom\\config.ini") != 0)
         , Diagnostics(GetPrivateProfileIntA("ModernRenderer", "Diagnostics", 1,
                                             ".\\Data\\Custom\\config.ini") != 0)
         , DiagnosticLimit(GetPrivateProfileIntA("ModernRenderer", "DiagnosticLimit", 24,
@@ -236,6 +311,7 @@ struct BMDModernRuntime::Impl
                                               ".\\Data\\Custom\\config.ini"))
         , ProgramAttempted(false)
         , Program(0)
+        , Mode(ProgramMode::None)
         , ProjectionLocation(-1)
         , ViewLocation(-1)
         , BatchPrepared(false)
@@ -271,10 +347,11 @@ struct BMDModernRuntime::Impl
 
         if (Enabled)
         {
-            char message[384] = { 0 };
+            char message[448] = { 0 };
             sprintf_s(message,
-                      "ExperimentalBMD=1; atlas runtime enabled (AtlasMode=%d, MinBones=%d, MinActions=%d, AtlasMaxPoses=%d, TargetName=%s, Diagnostics=%d)",
+                      "ExperimentalBMD=1; atlas runtime enabled (AtlasMode=%d, UseGeneratedShaders=%d, MinBones=%d, MinActions=%d, AtlasMaxPoses=%d, TargetName=%s, Diagnostics=%d)",
                       AtlasMode ? 1 : 0,
+                      UseGeneratedShaders ? 1 : 0,
                       MinBones,
                       MinActions,
                       MaxAtlasPoses,
@@ -291,6 +368,70 @@ struct BMDModernRuntime::Impl
         }
     }
 
+    bool ConfigureCommonProgram(GLuint candidate)
+    {
+        if (candidate == 0)
+            return false;
+
+        if (!Bindings.ConfigureProgram(candidate))
+            return false;
+
+        return true;
+    }
+
+    bool TryGeneratedProgram()
+    {
+        GLuint candidate = LoadProgram(
+            "Data\\Effect\\Modern\\Generated\\models\\texture.vs",
+            "Data\\Effect\\Modern\\Generated\\models\\texture.ps");
+        if (candidate == 0)
+            return false;
+
+        if (!ConfigureCommonProgram(candidate) ||
+            !GlobalConstants.Initialize() ||
+            !GlobalConstants.ConfigureProgram(candidate))
+        {
+            glDeleteProgram(candidate);
+            return false;
+        }
+
+        Program = candidate;
+        Mode = ProgramMode::Generated;
+        ProjectionLocation = -1;
+        ViewLocation = -1;
+        ModernLog("generated OpenGL models/texture shader ready (source contract: vulkan-main HLSL -> opengl-main GLSL)");
+        return true;
+    }
+
+    bool TryExperimentalProgram()
+    {
+        GLuint candidate = LoadProgram("Data\\Effect\\Modern\\BMDExperimental.vs",
+                                       "Data\\Effect\\Modern\\BMDExperimental.fs");
+        if (candidate == 0)
+            return false;
+
+        if (!ConfigureCommonProgram(candidate))
+        {
+            glDeleteProgram(candidate);
+            return false;
+        }
+
+        const GLint projection = glGetUniformLocation(candidate, "uProj");
+        const GLint view = glGetUniformLocation(candidate, "uView");
+        if (projection < 0 || view < 0)
+        {
+            glDeleteProgram(candidate);
+            return false;
+        }
+
+        Program = candidate;
+        Mode = ProgramMode::Experimental;
+        ProjectionLocation = projection;
+        ViewLocation = view;
+        ModernLog("experimental shader program ready (generated shader fallback)");
+        return true;
+    }
+
     bool EnsureProgram()
     {
         if (Program != 0)
@@ -299,31 +440,22 @@ struct BMDModernRuntime::Impl
             return false;
 
         ProgramAttempted = true;
-        Program = LoadProgram("Data\\Effect\\Modern\\BMDExperimental.vs",
-                              "Data\\Effect\\Modern\\BMDExperimental.fs");
-        if (Program == 0)
-            return false;
 
-        if (!Bindings.ConfigureProgram(Program))
+        if (UseGeneratedShaders)
         {
-            ModernLog("sampler contract mismatch; using legacy fallback");
-            glDeleteProgram(Program);
-            Program = 0;
-            return false;
+            if (TryGeneratedProgram())
+                return true;
+
+            ModernLog("generated OpenGL texture shader unavailable/incompatible; trying BMDExperimental fallback");
         }
 
-        ProjectionLocation = glGetUniformLocation(Program, "uProj");
-        ViewLocation = glGetUniformLocation(Program, "uView");
-        if (ProjectionLocation < 0 || ViewLocation < 0)
-        {
-            ModernLog("camera uniforms missing; using legacy fallback");
-            glDeleteProgram(Program);
-            Program = 0;
-            return false;
-        }
+        if (TryExperimentalProgram())
+            return true;
 
-        ModernLog("experimental shader program ready");
-        return true;
+        ModernLog("no modern BMD shader program available; legacy fallback only");
+        Mode = ProgramMode::None;
+        Program = 0;
+        return false;
     }
 
     void LogDiagnostic(BMD* model,
@@ -391,9 +523,6 @@ struct BMDModernRuntime::Impl
             return false;
         }
 
-        // In atlas mode the immutable palette is the animation source. Player
-        // equipment often reports one local Action while its captured matrices
-        // still change every frame with the owning character skeleton.
         if (!AtlasMode && model->NumActions < MinActions)
         {
             if (logReason)
@@ -545,13 +674,14 @@ bool BMDModernRuntime::PrepareBatch(const OGL330MODEL::MeshVAO& commands)
     if (!m_Impl->AtlasUploadLogged)
     {
         m_Impl->AtlasUploadLogged = true;
-        char message[256] = { 0 };
+        char message[288] = { 0 };
         sprintf_s(message,
-                  "skeleton atlas uploaded once for batch: poses=%u bones=%u reused=%u commands=%u",
+                  "skeleton atlas uploaded once for batch: poses=%u bones=%u reused=%u commands=%u shader=%s",
                   stats.PoseCount,
                   stats.BoneCount,
                   stats.ReusedPoseCount,
-                  static_cast<unsigned int>(commands.size()));
+                  static_cast<unsigned int>(commands.size()),
+                  m_Impl->Mode == Impl::ProgramMode::Generated ? "generated" : "experimental");
         ModernLog(message);
     }
 
@@ -637,8 +767,25 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
     glGetFloatv(GL_MODELVIEW_MATRIX, view);
 
     glUseProgram(m_Impl->Program);
-    glUniformMatrix4fv(m_Impl->ProjectionLocation, 1, GL_FALSE, projection);
-    glUniformMatrix4fv(m_Impl->ViewLocation, 1, GL_FALSE, view);
+
+    if (m_Impl->Mode == Impl::ProgramMode::Generated)
+    {
+        Render::ShaderGlobalConstants constants;
+        BuildGeneratedGlobals(command, projection, view, constants);
+        if (!m_Impl->GlobalConstants.Upload(constants))
+        {
+            m_Impl->LogDiagnostic(model, command, Impl::DiagnosticGlobals,
+                                  "globals: GlobalConstants upload failed");
+            glUseProgram(0);
+            return false;
+        }
+        m_Impl->GlobalConstants.Bind();
+    }
+    else
+    {
+        glUniformMatrix4fv(m_Impl->ProjectionLocation, 1, GL_FALSE, projection);
+        glUniformMatrix4fv(m_Impl->ViewLocation, 1, GL_FALSE, view);
+    }
 
     if (!m_Impl->Bindings.Bind(Bitmaps[command.m_TextureID].TextureNumber,
                                m_Impl->SkeletonTexture))
@@ -671,9 +818,9 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
         if (!m_Impl->AtlasMode)
             m_Impl->SelectedModel = model;
 
-        char message[352] = { 0 };
+        char message[384] = { 0 };
         sprintf_s(message,
-                  "atlas modern BMD selected: %.31s (bones=%u, actions=%d, mesh=%d, texture=%d, BaseBone=%u, action=%u, frame=%.3f)",
+                  "atlas modern BMD selected: %.31s (bones=%u, actions=%d, mesh=%d, texture=%d, BaseBone=%u, action=%u, frame=%.3f, shader=%s)",
                   model->Name,
                   boneCount,
                   static_cast<int>(model->NumActions),
@@ -681,7 +828,8 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
                   command.m_TextureID,
                   submission->BoneIndex,
                   static_cast<unsigned int>(model->CurrentAction),
-                  model->CurrentAnimation);
+                  model->CurrentAnimation,
+                  m_Impl->Mode == Impl::ProgramMode::Generated ? "generated" : "experimental");
         ModernLog(message);
     }
     else if (!m_Impl->FirstPoseChangeLogged &&
