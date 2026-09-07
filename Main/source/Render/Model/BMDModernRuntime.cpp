@@ -14,6 +14,8 @@
 #include "ZzzBMD.h"
 #include "ZzzTexture.h"
 
+#include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <memory>
 #include <sstream>
@@ -114,6 +116,25 @@ namespace
         return program;
     }
 
+    static std::uint64_t HashSkeletonPose(const float* matrices, std::uint32_t boneCount)
+    {
+        if (matrices == NULL || boneCount == 0)
+            return 0;
+
+        // FNV-1a over the exact affine matrices. We only use this as a runtime
+        // validation signal: a different hash on a later draw proves that a
+        // live animated pose reached the modern skeleton path.
+        const unsigned char* bytes = reinterpret_cast<const unsigned char*>(matrices);
+        const size_t byteCount = static_cast<size_t>(boneCount) * 12u * sizeof(float);
+        std::uint64_t hash = 1469598103934665603ull;
+        for (size_t i = 0; i < byteCount; ++i)
+        {
+            hash ^= static_cast<std::uint64_t>(bytes[i]);
+            hash *= 1099511628211ull;
+        }
+        return hash;
+    }
+
     struct MeshKey
     {
         BMD* Model;
@@ -142,11 +163,18 @@ namespace
 struct BMDModernRuntime::Impl
 {
     bool Enabled;
+    int MinBones;
+    int MinActions;
+    char TargetName[64];
     bool ProgramAttempted;
     GLuint Program;
     GLint ProjectionLocation;
     GLint ViewLocation;
     BMD* SelectedModel;
+    bool InitialPoseHashValid;
+    bool PoseChangeLogged;
+    std::uint64_t InitialPoseHash;
+    std::uint64_t SuccessfulDraws;
 
     SkeletonBuffer Skeleton;
     OpenGLSkeletonTexture SkeletonTexture;
@@ -157,16 +185,45 @@ struct BMDModernRuntime::Impl
     Impl()
         : Enabled(GetPrivateProfileIntA("ModernRenderer", "ExperimentalBMD", 0,
                                         ".\\Data\\Custom\\config.ini") != 0)
+        , MinBones(GetPrivateProfileIntA("ModernRenderer", "MinBones", 20,
+                                         ".\\Data\\Custom\\config.ini"))
+        , MinActions(GetPrivateProfileIntA("ModernRenderer", "MinActions", 2,
+                                           ".\\Data\\Custom\\config.ini"))
         , ProgramAttempted(false)
         , Program(0)
         , ProjectionLocation(-1)
         , ViewLocation(-1)
         , SelectedModel(NULL)
+        , InitialPoseHashValid(false)
+        , PoseChangeLogged(false)
+        , InitialPoseHash(0)
+        , SuccessfulDraws(0)
         , Skeleton(SkeletonBuffer::StorageMode::QuaternionPositionScale)
     {
-        ModernLog(Enabled
-            ? "ExperimentalBMD=1; first-light runtime enabled"
-            : "ExperimentalBMD=0; legacy renderer only");
+        TargetName[0] = '\0';
+        GetPrivateProfileStringA("ModernRenderer", "TargetName", "",
+                                 TargetName, static_cast<DWORD>(sizeof(TargetName)),
+                                 ".\\Data\\Custom\\config.ini");
+
+        if (MinBones < 2)
+            MinBones = 2;
+        if (MinBones > MAX_BONES)
+            MinBones = MAX_BONES;
+        if (MinActions < 1)
+            MinActions = 1;
+
+        if (Enabled)
+        {
+            char message[256] = { 0 };
+            sprintf_s(message,
+                      "ExperimentalBMD=1; complex validation enabled (MinBones=%d, MinActions=%d, TargetName=%s)",
+                      MinBones, MinActions, TargetName[0] != '\0' ? TargetName : "<any>");
+            ModernLog(message);
+        }
+        else
+        {
+            ModernLog("ExperimentalBMD=0; legacy renderer only");
+        }
     }
 
     bool EnsureProgram()
@@ -201,6 +258,17 @@ struct BMDModernRuntime::Impl
         }
 
         ModernLog("experimental shader program ready");
+        return true;
+    }
+
+    bool MatchesSelectionFilter(const BMD* model) const
+    {
+        if (model == NULL)
+            return false;
+        if (model->NumBones < MinBones || model->NumActions < MinActions)
+            return false;
+        if (TargetName[0] != '\0' && std::strstr(model->Name, TargetName) == NULL)
+            return false;
         return true;
     }
 
@@ -261,16 +329,21 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
         command.m_TextureID < 0)
         return false;
 
-    // First-light supports only the ordinary texture path. BlendMesh exposes
-    // meshUV.z=1 in the legacy frontend, while chrome/metal/oil/shadow/etc. all
-    // carry flags outside this small allow-list and therefore fall back.
+    // Until one complex model is proven, ignore small/static BMDs. Once a model
+    // succeeds it becomes the only selected asset for this process, keeping the
+    // experiment narrow while all other BMDs continue through the legacy path.
+    if (m_Impl->SelectedModel == NULL && !m_Impl->MatchesSelectionFilter(model))
+        return false;
+    if (m_Impl->SelectedModel != NULL && m_Impl->SelectedModel != model)
+        return false;
+
+    // Complex-validation still supports only the ordinary texture path.
+    // BlendMesh exposes meshUV.z=1 in the legacy frontend, while chrome/metal/
+    // oil/shadow/etc. carry flags outside this allow-list and therefore fall back.
     const int allowedFlags = RENDER_TEXTURE | RENDER_NODEPTH;
     if ((command.m_FlagRender & RENDER_TEXTURE) == 0 ||
         (command.m_FlagRender & ~allowedFlags) != 0 ||
         command.m_meshUV.z != 0.0f || command.m_meshUV.x != 0.0f || command.m_meshUV.y != 0.0f)
-        return false;
-
-    if (m_Impl->SelectedModel != NULL && m_Impl->SelectedModel != model)
         return false;
 
     ModernMeshGpu* mesh = m_Impl->GetMesh(model, command.m_IndexMesh);
@@ -342,12 +415,40 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
     glBindVertexArray(0);
     glUseProgram(0);
 
+    ++m_Impl->SuccessfulDraws;
+    const std::uint64_t poseHash = HashSkeletonPose(
+        &model->m_pLastBoneMatrix[0][0][0],
+        static_cast<std::uint32_t>(model->NumBones));
+
     if (m_Impl->SelectedModel == NULL)
     {
         m_Impl->SelectedModel = model;
-        char message[160] = { 0 };
-        sprintf_s(message, "first modern BMD selected: %s (%d bones)",
-                  model->Name, static_cast<int>(model->NumBones));
+        m_Impl->InitialPoseHash = poseHash;
+        m_Impl->InitialPoseHashValid = poseHash != 0;
+
+        char message[320] = { 0 };
+        sprintf_s(message,
+                  "complex modern BMD selected: %s (bones=%d, actions=%d, mesh=%d, texture=%d, action=%u, frame=%.3f)",
+                  model->Name,
+                  static_cast<int>(model->NumBones),
+                  static_cast<int>(model->NumActions),
+                  command.m_IndexMesh,
+                  command.m_TextureID,
+                  static_cast<unsigned int>(model->CurrentAction),
+                  model->CurrentAnimation);
+        ModernLog(message);
+    }
+    else if (!m_Impl->PoseChangeLogged && m_Impl->InitialPoseHashValid &&
+             poseHash != 0 && poseHash != m_Impl->InitialPoseHash)
+    {
+        m_Impl->PoseChangeLogged = true;
+        char message[256] = { 0 };
+        sprintf_s(message,
+                  "animated pose change observed: %s (draw=%llu, action=%u, frame=%.3f)",
+                  model->Name,
+                  static_cast<unsigned long long>(m_Impl->SuccessfulDraws),
+                  static_cast<unsigned int>(model->CurrentAction),
+                  model->CurrentAnimation);
         ModernLog(message);
     }
 
