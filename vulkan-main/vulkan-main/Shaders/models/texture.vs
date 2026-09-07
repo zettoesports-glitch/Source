@@ -13,7 +13,7 @@ PixelInput main(VertexInput input)
 	{
 		BoneMatrix = RequestBone(uint(input.BoneIndex), uint(input.Bones.y));
 	}
-	float3 normal = mul(input.Normal, (float3x3)BoneMatrix);
+	float3 normal = normalize(mul(input.Normal, (float3x3)BoneMatrix));
 	
 	output.Position += float4(normal, 0.0f) * input.BodyScale.y;
 
@@ -27,12 +27,12 @@ PixelInput main(VertexInput input)
 
 	if(input.Data.x == 1.0f)
 	{
-		float Luminosity = dot(normal, LightPosition) * 0.8f + 0.4f;
-
-		if(Luminosity < 0.2f)
-		{
-			Luminosity = 0.2f;
-		}
+		// Legacy Model.vs blends directional lighting by u_lightPosition.w.
+		// For the generated contract the matching per-draw value is already
+		// carried in BodyLight.a. Apply it to RGB while preserving modern alpha.
+		float lightBlend = saturate(input.BodyLight.a);
+		float Luminosity = ((dot(normal, LightPosition) * 0.8f + 0.4f) * lightBlend) + (1.0f - lightBlend);
+		Luminosity = max(Luminosity, 0.2f);
 
 		output.Color = saturate(input.BodyLight * float4(Luminosity, Luminosity, Luminosity, 1.0f));
 	}
