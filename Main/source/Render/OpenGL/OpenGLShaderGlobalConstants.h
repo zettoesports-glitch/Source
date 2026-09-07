@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../Uniforms/ShaderGlobalConstants.h"
+
 class OpenGLShaderGlobalConstants
 {
 public:
@@ -11,8 +13,7 @@ public:
 
     bool Initialize();
     bool ConfigureProgram(unsigned int program) const;
-    bool Upload(const struct RenderShaderGlobalConstantsProxy&); // intentionally undefined: prevent accidental ABI use
-    bool UploadRaw(const void* data, unsigned int byteCount);
+    bool Upload(const Render::ShaderGlobalConstants& constants);
     void Bind() const;
     void Destroy();
 
