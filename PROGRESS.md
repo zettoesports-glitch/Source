@@ -1,58 +1,61 @@
 # PROGRESS.md — Diário da Modernização Luois 5.2
 
-> **Propósito:** registrar tudo que foi feito, decisões tomadas e pendências, para nunca se perder entre sessões. Plano mestre: `MODERNIZATION_PLAN_V2.md` · Auditoria: `LUOIS_RENDERER_AUDIT.md` · Dependências: `RENDER_DEPENDENCY_MAP.md`
+> **Propósito:** registrar tudo que foi feito, decisões tomadas e pendências. Plano mestre: `MODERNIZATION_PLAN_V2.md` · Auditoria: `LUOIS_RENDERER_AUDIT.md` · Dependências: `RENDER_DEPENDENCY_MAP.md`
 
 ---
 
-## 2026-09-07 — Sessão 4 (FASE 6 concluída — Core Profile / migração controlada)
+## 2026-09-07 — Sessão 5 (FASE 7 — BMD / GPU Skinning)
 
-### FASE 6 — CORE PROFILE
+### FASE 7 — Infraestrutura e ponte de integração
 
-- [x] Estrutura de migração controlada criada em `Render/Immediate/LegacyImmediateAdapter.h`.
-- [x] `ImmediateRenderer` integrado como camada de conversão de primitivas legadas.
-- [x] `GL_QUADS` convertido para `GL_TRIANGLES` sem duplicar a lógica nos consumidores.
-- [x] Adapter mantém a submissão física no `CoreGLCompat`, preservando VAO + VBO + GLSL 330 core e rollback seguro.
-- [x] Estado de cor e UV é transportado explicitamente pelo adapter.
-- [x] Ring/staging do `ImmediateRenderer` foi conectado ao caminho de submissão compatível.
-- [x] Migração ficou preparada para consumidores individuais, sem alteração global de `glBegin/glEnd`.
-- [x] Fallback legado preservado para os consumidores ainda não migrados.
-- [x] Ordem segura documentada: consumidor pequeno → validação visual → remoção local de immediate mode → próximo subsistema.
+- [x] Limite de `200` bones mantido alinhado com `MAX_BONES`/BoneUBO.
+- [x] `BonePalette` em formato CPU 3x4.
+- [x] Conversão explícita 3x4 → 4x4 para consumo futuro por UBO/std140.
+- [x] Proteção de índice de bone no layout de quatro influências.
+- [x] Normalização segura de até 4 pesos.
+- [x] Layout preparado para posição, normal, UV, bone indices e bone weights.
+- [x] Ponte `BMDGpuSkinningBridge` criada para ligar a representação atual de animação do BMD ao renderer moderno.
+- [x] A representação atual do BMD continua lossless: cada `Vertex_t` ainda possui seu `Node` original.
+- [x] Para o formato atual, o vertex é representado como uma influência única com peso `1.0`; não foram inventados pesos inexistentes no asset.
+- [x] Fallback legado preservado; nenhuma ativação global do novo skinning foi feita.
 
-### Limite intencional da FASE 6
+### Integração existente auditada
 
-A FASE 6 é considerada concluída como **ponte de migração controlada**. Não foi feita uma substituição em massa dos 61 `glBegin`, porque isso misturaria a criação da abstração com validação visual de dezenas de consumidores. Os consumidores continuam sendo migrados individualmente sobre essa ponte, preservando rollback e reduzindo risco.
+O caminho `New_ModelBMD` / `New_RenderBMD` já possui VAO/VBO, IBO, palette de bones e envio de palette por uniform. A auditoria confirmou que o asset BMD atual fornece **um bone por vértice** (`Vertex_t::Node`), portanto não é correto fabricar quatro influências. A evolução para quatro influências reais depende de dados de pesos no formato de asset ou de uma etapa posterior de conversão.
 
-### Resultado
+### Pendências da FASE 7
 
-O renderer agora possui uma fronteira explícita entre immediate mode legado e `ImmediateRenderer`: o consumidor pode ser convertido sem conhecer a implementação de conversão, e a submissão continua protegida pelo `CoreGLCompat` até a integração posterior com RHI/OpenGL/Vulkan.
-
-### Próxima fase
-
-FASE 7 — BMD/model rendering e GPU skinning, seguindo `RENDER_DEPENDENCY_MAP.md`: avançar `New_ModelBMD` / `New_RenderBMD`, conectar buffers/VAO/shaders ao RHI e preparar a bone palette para consumo na GPU, mantendo o caminho atual como fallback.
-
----
-
-## 2026-09-07 — Sessão 3 (FASE 5 — ImmediateRenderer)
-
-### FASE 5 — IMMEDIATERENDERER
-
-- [x] `Render/Immediate/ImmediateRenderer.h` criado como ponte explícita entre `glBegin/glEnd` e o renderer moderno.
-- [x] Staging de vértices com posição, cor, UV e normal.
-- [x] Ring-buffer allocator com capacidade fixa e reset seguro por frame.
-- [x] Batches separados por primitiva para permitir submissão posterior sem acoplar o código legado ao backend.
-- [x] Conversão de `Quads`, `QuadStrip`, `Polygon`, `TriangleFan` e `TriangleStrip` para `Triangles`.
-- [x] Conversão de `LineStrip` e `LineLoop` para `Lines`.
-- [x] API preparada para integração com OpenGL/Vulkan sem chamadas GL dentro do componente.
+- [ ] Adicionar os novos arquivos ao `Main.vcxproj` quando a integração física for ativada.
+- [ ] Alterar o VAO real para transportar `uvec4` + `vec4` de influências.
+- [ ] Substituir o palette uniforme atual por BoneUBO/std140 no caminho moderno.
+- [ ] Conectar diretamente `BoneTransform` → `BonePalette` no ponto de renderização, sem duplicar a animação CPU.
+- [ ] Skin de normais no vertex shader.
+- [ ] Validação visual de animação BMD.
+- [ ] Teste de build `Global Release|x86` no ambiente local.
+- [ ] Promover o caminho GPU somente após validação visual e build limpo.
 
 ### Decisão de segurança
 
-A integração direta dos 61 `glBegin` não será feita em massa. O `CoreGLCompat` já possui batching/stream VBO funcional; substituir todos os consumidores de uma vez aumentaria o risco. A migração da FASE 6 será feita por consumidor, com validação visual entre etapas.
+FASE 7 continua isolada. O renderer legado não foi alterado e o caminho `jdk_shader_local330` não foi ativado globalmente. O próximo passo é integrar o VAO/UBO real do caminho moderno, mantendo fallback por falha de dados, shader ou inicialização.
 
 ---
 
-## 2026-09-07 — Sessão 2 (FASE 4 concluída — fundação criada)
+## 2026-09-07 — Sessão 4 (FASE 6 — Core Profile / migração controlada)
 
-### FASE 4 — FUNDAÇÃO DO RENDERER
+- [x] Estrutura de migração controlada criada em `Render/Immediate/LegacyImmediateAdapter.h`.
+- [x] `ImmediateRenderer` integrado como camada de conversão de primitivas legadas.
+- [x] `GL_QUADS` convertido para `GL_TRIANGLES`.
+- [x] Adapter mantém submissão física no `CoreGLCompat`, preservando rollback seguro.
+- [x] Migração individual preparada; substituição em massa dos 61 `glBegin` não feita.
+
+## 2026-09-07 — Sessão 3 (FASE 5 — ImmediateRenderer)
+
+- [x] `Render/Immediate/ImmediateRenderer.h` criado.
+- [x] Staging de vértices com posição, cor, UV e normal.
+- [x] Conversão de primitivas legadas para batches modernos.
+- [x] API preparada para integração OpenGL/Vulkan.
+
+## 2026-09-07 — Sessão 2 (FASE 4 — Fundação)
 
 - [x] `Render/Core/RenderTypes.h`
 - [x] `Render/Core/RenderConfig.h`
@@ -65,11 +68,7 @@ A integração direta dos 61 `glBegin` não será feita em massa. O `CoreGLCompa
 - [x] `Render/Uniforms/BoneUBO.h`
 - [x] `Render/OpenGL/OpenGLRenderDevice.h/.cpp`
 
-A fundação foi criada em paralelo, sem redirecionar o renderer legado.
-
----
-
-## 2026-09-07 — Sessão 2 (FASE 3 concluída)
+## 2026-09-07 — Sessão 2 (FASE 3)
 
 - [x] `RENDER_DEPENDENCY_MAP.md` criado.
 - [x] Pipeline e dependências documentados.
@@ -88,14 +87,14 @@ A fundação foi criada em paralelo, sem redirecionar o renderer legado.
 
 ```bat
 cd C:\MUVULKAN\Source\Main
-"C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" ^
-  Main.sln /p:"Configuration=Global Release;Platform=x86" /m /v:m
+"C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild.exe" Main.sln /p:"Configuration=Global Release;Platform=x86" /m /v:m
 ```
 
 ## Estado do git
 
 - `main` — baseline imutável (`3b3abe2`)
 - `modernization` — branch de trabalho atual
-- FASE 4: fundação RHI + estado + UBO concluída
-- FASE 5: ImmediateRenderer concluído
-- FASE 6: ponte de migração controlada concluída
+- FASE 4: concluída
+- FASE 5: concluída
+- FASE 6: ponte concluída
+- FASE 7: infraestrutura + ponte BMD concluídas; integração física ainda pendente
