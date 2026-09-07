@@ -5,8 +5,7 @@
 
 #include "BMDModernInstanceBuilder.h"
 #include "BMDModernMesh.h"
-#include "BMDModernSkeletonPose.h"
-#include "SkeletonBuffer.h"
+#include "BMDModernSkeletonAtlas.h"
 #include "../OpenGL/OpenGLBMDModernBindings.h"
 #include "../OpenGL/OpenGLBMDModernInstanceBuffer.h"
 #include "../OpenGL/OpenGLBMDModernVAO.h"
@@ -33,8 +32,6 @@ namespace
         OutputDebugStringA(message);
         OutputDebugStringA("\n");
 
-        // Persistent validation trace. This distinguishes a real modern draw
-        // from a visually identical legacy fallback without requiring a debugger.
         std::ofstream logFile("Data\\ModernBMD.log", std::ios::out | std::ios::app);
         if (logFile.is_open())
             logFile << "[ModernBMD] " << message << '\n';
@@ -45,6 +42,7 @@ namespace
         std::ifstream file(path, std::ios::in | std::ios::binary);
         if (!file.is_open())
             return std::string();
+
         std::ostringstream stream;
         stream << file.rdbuf();
         return stream.str();
@@ -66,11 +64,12 @@ namespace
         {
             char log[2048] = { 0 };
             glGetShaderInfoLog(shader, static_cast<GLsizei>(sizeof(log) - 1), NULL, log);
-            std::string message = std::string(label ? label : "shader") + ": " + log;
+            const std::string message = std::string(label ? label : "shader") + ": " + log;
             ModernLog(message.c_str());
             glDeleteShader(shader);
             return 0;
         }
+
         return shader;
     }
 
@@ -87,6 +86,7 @@ namespace
         GLuint vertex = CompileStage(GL_VERTEX_SHADER, vertexSource, vertexPath);
         if (vertex == 0)
             return 0;
+
         GLuint fragment = CompileStage(GL_FRAGMENT_SHADER, fragmentSource, fragmentPath);
         if (fragment == 0)
         {
@@ -107,11 +107,12 @@ namespace
         {
             char log[2048] = { 0 };
             glGetProgramInfoLog(program, static_cast<GLsizei>(sizeof(log) - 1), NULL, log);
-            std::string message = std::string("program link: ") + log;
+            const std::string message = std::string("program link: ") + log;
             ModernLog(message.c_str());
             glDeleteProgram(program);
             return 0;
         }
+
         return program;
     }
 
@@ -120,8 +121,6 @@ namespace
         if (matrices == NULL || boneCount == 0)
             return 0;
 
-        // FNV-1a over the exact affine matrices. A different hash on a later
-        // draw proves that a live animated pose reached the modern skeleton path.
         const unsigned char* bytes = reinterpret_cast<const unsigned char*>(matrices);
         const size_t byteCount = static_cast<size_t>(boneCount) * 12u * sizeof(float);
         std::uint64_t hash = 1469598103934665603ull;
@@ -133,10 +132,25 @@ namespace
         return hash;
     }
 
+    static std::uint32_t GetPaletteBoneCount(const OGL330MODEL::RenderMeshVAO& command)
+    {
+        if (!command.m_BonePalette || command.m_BonePalette->empty() ||
+            (command.m_BonePalette->size() % 12u) != 0u)
+        {
+            return 0;
+        }
+
+        const size_t count = command.m_BonePalette->size() / 12u;
+        if (count > static_cast<size_t>(MAX_BONES))
+            return MAX_BONES;
+        return static_cast<std::uint32_t>(count);
+    }
+
     struct MeshKey
     {
         BMD* Model;
         int MeshIndex;
+
         bool operator==(const MeshKey& other) const
         {
             return Model == other.Model && MeshIndex == other.MeshIndex;
@@ -168,27 +182,36 @@ struct BMDModernRuntime::Impl
         DiagnosticMesh = 1u << 3,
         DiagnosticSkeleton = 1u << 4,
         DiagnosticInstance = 1u << 5,
-        DiagnosticBindings = 1u << 6
+        DiagnosticBindings = 1u << 6,
+        DiagnosticAtlas = 1u << 7
     };
 
     bool Enabled;
+    bool AtlasMode;
     bool Diagnostics;
     int DiagnosticLimit;
     int DiagnosticMessages;
     int MinBones;
     int MinActions;
+    int MaxAtlasPoses;
     char TargetName[64];
+
     bool ProgramAttempted;
     GLuint Program;
     GLint ProjectionLocation;
     GLint ViewLocation;
+
+    bool BatchPrepared;
+    bool AtlasUploadLogged;
+    bool MultiPoseLogged;
     BMD* SelectedModel;
-    bool InitialPoseHashValid;
-    bool PoseChangeLogged;
-    std::uint64_t InitialPoseHash;
+    BMD* FirstModernModel;
+    bool FirstPoseHashValid;
+    bool FirstPoseChangeLogged;
+    std::uint64_t FirstPoseHash;
     std::uint64_t SuccessfulDraws;
 
-    SkeletonBuffer Skeleton;
+    BMDModernSkeletonAtlas Atlas;
     OpenGLSkeletonTexture SkeletonTexture;
     OpenGLBMDModernBindings Bindings;
     OpenGLBMDModernInstanceBuffer InstanceBuffer;
@@ -198,6 +221,8 @@ struct BMDModernRuntime::Impl
     Impl()
         : Enabled(GetPrivateProfileIntA("ModernRenderer", "ExperimentalBMD", 0,
                                         ".\\Data\\Custom\\config.ini") != 0)
+        , AtlasMode(GetPrivateProfileIntA("ModernRenderer", "AtlasMode", 1,
+                                          ".\\Data\\Custom\\config.ini") != 0)
         , Diagnostics(GetPrivateProfileIntA("ModernRenderer", "Diagnostics", 1,
                                             ".\\Data\\Custom\\config.ini") != 0)
         , DiagnosticLimit(GetPrivateProfileIntA("ModernRenderer", "DiagnosticLimit", 24,
@@ -207,16 +232,22 @@ struct BMDModernRuntime::Impl
                                          ".\\Data\\Custom\\config.ini"))
         , MinActions(GetPrivateProfileIntA("ModernRenderer", "MinActions", 2,
                                            ".\\Data\\Custom\\config.ini"))
+        , MaxAtlasPoses(GetPrivateProfileIntA("ModernRenderer", "AtlasMaxPoses", 32,
+                                              ".\\Data\\Custom\\config.ini"))
         , ProgramAttempted(false)
         , Program(0)
         , ProjectionLocation(-1)
         , ViewLocation(-1)
+        , BatchPrepared(false)
+        , AtlasUploadLogged(false)
+        , MultiPoseLogged(false)
         , SelectedModel(NULL)
-        , InitialPoseHashValid(false)
-        , PoseChangeLogged(false)
-        , InitialPoseHash(0)
+        , FirstModernModel(NULL)
+        , FirstPoseHashValid(false)
+        , FirstPoseChangeLogged(false)
+        , FirstPoseHash(0)
         , SuccessfulDraws(0)
-        , Skeleton(SkeletonBuffer::StorageMode::QuaternionPositionScale)
+        , Atlas(SkeletonBuffer::StorageMode::QuaternionPositionScale)
     {
         TargetName[0] = '\0';
         GetPrivateProfileStringA("ModernRenderer", "TargetName", "",
@@ -229,6 +260,10 @@ struct BMDModernRuntime::Impl
             MinBones = MAX_BONES;
         if (MinActions < 1)
             MinActions = 1;
+        if (MaxAtlasPoses < 1)
+            MaxAtlasPoses = 1;
+        if (MaxAtlasPoses > 256)
+            MaxAtlasPoses = 256;
         if (DiagnosticLimit < 1)
             DiagnosticLimit = 1;
         if (DiagnosticLimit > 128)
@@ -236,15 +271,19 @@ struct BMDModernRuntime::Impl
 
         if (Enabled)
         {
-            char message[320] = { 0 };
+            char message[384] = { 0 };
             sprintf_s(message,
-                      "ExperimentalBMD=1; complex validation enabled (MinBones=%d, MinActions=%d, TargetName=%s, Diagnostics=%d, Limit=%d)",
+                      "ExperimentalBMD=1; atlas runtime enabled (AtlasMode=%d, MinBones=%d, MinActions=%d, AtlasMaxPoses=%d, TargetName=%s, Diagnostics=%d)",
+                      AtlasMode ? 1 : 0,
                       MinBones,
                       MinActions,
+                      MaxAtlasPoses,
                       TargetName[0] != '\0' ? TargetName : "<any>",
-                      Diagnostics ? 1 : 0,
-                      DiagnosticLimit);
+                      Diagnostics ? 1 : 0);
             ModernLog(message);
+
+            if (AtlasMode && MinActions > 1)
+                ModernLog("AtlasMode uses captured bone palettes; MinActions is ignored so animated player equipment with one local action can participate");
         }
         else
         {
@@ -309,7 +348,7 @@ struct BMDModernRuntime::Impl
         sprintf_s(message,
                   "candidate %.31s: bones=%d actions=%d mesh=%d flags=0x%08X texture=%d uv=(%.3f,%.3f,%.3f) -> %s",
                   model->Name,
-                  static_cast<int>(model->NumBones),
+                  static_cast<int>(GetPaletteBoneCount(command)),
                   static_cast<int>(model->NumActions),
                   command.m_IndexMesh,
                   static_cast<unsigned int>(command.m_FlagRender),
@@ -322,6 +361,79 @@ struct BMDModernRuntime::Impl
 
         if (DiagnosticMessages == DiagnosticLimit)
             ModernLog("diagnostic limit reached; further candidate fallback messages suppressed");
+    }
+
+    bool IsEligible(const OGL330MODEL::RenderMeshVAO& command, bool logReason)
+    {
+        BMD* model = command.m_OldBMD;
+        if (model == NULL)
+            return false;
+
+        const std::uint32_t boneCount = GetPaletteBoneCount(command);
+        if (boneCount <= 1)
+        {
+            if (logReason)
+                LogDiagnostic(model, command, DiagnosticBasic, "fallback: no captured skeletal palette or <= 1 bone");
+            return false;
+        }
+
+        if (command.m_TextureID < 0)
+        {
+            if (logReason)
+                LogDiagnostic(model, command, DiagnosticBasic, "fallback: invalid texture id");
+            return false;
+        }
+
+        if (boneCount < static_cast<std::uint32_t>(MinBones))
+        {
+            if (logReason)
+                LogDiagnostic(model, command, DiagnosticFilter, "filter: below MinBones");
+            return false;
+        }
+
+        // In atlas mode the immutable palette is the animation source. Player
+        // equipment often reports one local Action while its captured matrices
+        // still change every frame with the owning character skeleton.
+        if (!AtlasMode && model->NumActions < MinActions)
+        {
+            if (logReason)
+                LogDiagnostic(model, command, DiagnosticFilter, "filter: below MinActions");
+            return false;
+        }
+
+        if (TargetName[0] != '\0' && std::strstr(model->Name, TargetName) == NULL)
+        {
+            if (logReason)
+                LogDiagnostic(model, command, DiagnosticFilter, "filter: TargetName mismatch");
+            return false;
+        }
+
+        if (!AtlasMode && SelectedModel != NULL && SelectedModel != model)
+            return false;
+
+        const int allowedFlags = RENDER_TEXTURE | RENDER_NODEPTH;
+        if ((command.m_FlagRender & RENDER_TEXTURE) == 0)
+        {
+            if (logReason)
+                LogDiagnostic(model, command, DiagnosticMaterial, "material: not RENDER_TEXTURE");
+            return false;
+        }
+
+        if ((command.m_FlagRender & ~allowedFlags) != 0)
+        {
+            if (logReason)
+                LogDiagnostic(model, command, DiagnosticMaterial, "material: unsupported render flags");
+            return false;
+        }
+
+        if (command.m_meshUV.z != 0.0f || command.m_meshUV.x != 0.0f || command.m_meshUV.y != 0.0f)
+        {
+            if (logReason)
+                LogDiagnostic(model, command, DiagnosticMaterial, "material: Blend/stream UV path unsupported");
+            return false;
+        }
+
+        return true;
     }
 
     ModernMeshGpu* GetMesh(BMD* model, int meshIndex)
@@ -371,110 +483,130 @@ bool BMDModernRuntime::IsEnabled() const
     return m_Impl != NULL && m_Impl->Enabled;
 }
 
+bool BMDModernRuntime::PrepareBatch(const OGL330MODEL::MeshVAO& commands)
+{
+    if (m_Impl == NULL || !m_Impl->Enabled || commands.empty() || !m_Impl->EnsureProgram())
+        return false;
+
+    m_Impl->BatchPrepared = false;
+    m_Impl->Atlas.BeginFrame();
+
+    BMD* firstLightCandidate = m_Impl->SelectedModel;
+
+    for (OGL330MODEL::MeshVAO::const_iterator iter = commands.begin();
+         iter != commands.end(); ++iter)
+    {
+        const OGL330MODEL::RenderMeshVAO& command = *iter;
+        BMD* model = command.m_OldBMD;
+        if (!m_Impl->IsEligible(command, true))
+            continue;
+
+        if (!m_Impl->AtlasMode)
+        {
+            if (firstLightCandidate == NULL)
+                firstLightCandidate = model;
+            if (firstLightCandidate != model)
+                continue;
+        }
+
+        const void* poseKey = command.m_BonePalette.get();
+        if (m_Impl->Atlas.Find(poseKey) == NULL &&
+            m_Impl->Atlas.GetStats().PoseCount >= static_cast<std::uint32_t>(m_Impl->MaxAtlasPoses))
+        {
+            m_Impl->LogDiagnostic(model, command, Impl::DiagnosticAtlas, "atlas: AtlasMaxPoses reached");
+            continue;
+        }
+
+        const std::uint32_t boneCount = GetPaletteBoneCount(command);
+        const BMDModernSkeletonSubmission submission = m_Impl->Atlas.Stage(
+            poseKey,
+            command.m_BonePalette->data(),
+            boneCount,
+            1.0f);
+        if (!submission.Success)
+        {
+            m_Impl->LogDiagnostic(model, command, Impl::DiagnosticSkeleton,
+                                  "skeleton: captured palette rejected by QPS encoder");
+        }
+    }
+
+    const BMDModernSkeletonAtlas::Stats& stats = m_Impl->Atlas.GetStats();
+    if (stats.PoseCount == 0)
+        return false;
+
+    if (!m_Impl->SkeletonTexture.Upload(m_Impl->Atlas.GetBuffer()))
+    {
+        ModernLog("skeleton atlas BonesTexture upload failed; legacy fallback for batch");
+        return false;
+    }
+
+    m_Impl->BatchPrepared = true;
+
+    if (!m_Impl->AtlasUploadLogged)
+    {
+        m_Impl->AtlasUploadLogged = true;
+        char message[256] = { 0 };
+        sprintf_s(message,
+                  "skeleton atlas uploaded once for batch: poses=%u bones=%u reused=%u commands=%u",
+                  stats.PoseCount,
+                  stats.BoneCount,
+                  stats.ReusedPoseCount,
+                  static_cast<unsigned int>(commands.size()));
+        ModernLog(message);
+    }
+
+    if (!m_Impl->MultiPoseLogged && stats.PoseCount > 1)
+    {
+        m_Impl->MultiPoseLogged = true;
+        char message[224] = { 0 };
+        sprintf_s(message,
+                  "multi-pose skeleton atlas observed: poses=%u bones=%u (single BonesTexture upload)",
+                  stats.PoseCount,
+                  stats.BoneCount);
+        ModernLog(message);
+    }
+
+    return true;
+}
+
+void BMDModernRuntime::FinishBatch()
+{
+    if (m_Impl != NULL)
+        m_Impl->BatchPrepared = false;
+}
+
 bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
 {
-    if (m_Impl == NULL || !m_Impl->Enabled || !m_Impl->EnsureProgram())
+    if (m_Impl == NULL || !m_Impl->Enabled || !m_Impl->BatchPrepared ||
+        m_Impl->Program == 0 || !m_Impl->IsEligible(command, true))
+    {
         return false;
+    }
 
     BMD* model = command.m_OldBMD;
-    if (model == NULL)
+    const void* poseKey = command.m_BonePalette.get();
+    const BMDModernSkeletonSubmission* submission = m_Impl->Atlas.Find(poseKey);
+    if (submission == NULL || !submission->Success)
         return false;
-
-    if (model->NumBones <= 1)
-    {
-        m_Impl->LogDiagnostic(model, command, Impl::DiagnosticBasic, "fallback: NumBones <= 1");
-        return false;
-    }
-    if (model->m_pLastBoneMatrix == NULL)
-    {
-        m_Impl->LogDiagnostic(model, command, Impl::DiagnosticBasic, "fallback: no last BoneTransform");
-        return false;
-    }
-    if (command.m_TextureID < 0)
-    {
-        m_Impl->LogDiagnostic(model, command, Impl::DiagnosticBasic, "fallback: invalid texture id");
-        return false;
-    }
-
-    // Until one complex model is proven, ignore small/static BMDs. Once a model
-    // succeeds it becomes the only selected asset for this process, keeping the
-    // experiment narrow while all other BMDs continue through the legacy path.
-    if (m_Impl->SelectedModel == NULL)
-    {
-        if (model->NumBones < m_Impl->MinBones)
-        {
-            m_Impl->LogDiagnostic(model, command, Impl::DiagnosticFilter, "filter: below MinBones");
-            return false;
-        }
-        if (model->NumActions < m_Impl->MinActions)
-        {
-            m_Impl->LogDiagnostic(model, command, Impl::DiagnosticFilter, "filter: below MinActions");
-            return false;
-        }
-        if (m_Impl->TargetName[0] != '\0' && std::strstr(model->Name, m_Impl->TargetName) == NULL)
-        {
-            m_Impl->LogDiagnostic(model, command, Impl::DiagnosticFilter, "filter: TargetName mismatch");
-            return false;
-        }
-    }
-    else if (m_Impl->SelectedModel != model)
-    {
-        return false;
-    }
-
-    // Complex-validation still supports only the ordinary texture path.
-    const int allowedFlags = RENDER_TEXTURE | RENDER_NODEPTH;
-    if ((command.m_FlagRender & RENDER_TEXTURE) == 0)
-    {
-        m_Impl->LogDiagnostic(model, command, Impl::DiagnosticMaterial, "material: not RENDER_TEXTURE");
-        return false;
-    }
-    if ((command.m_FlagRender & ~allowedFlags) != 0)
-    {
-        m_Impl->LogDiagnostic(model, command, Impl::DiagnosticMaterial, "material: unsupported render flags");
-        return false;
-    }
-    if (command.m_meshUV.z != 0.0f || command.m_meshUV.x != 0.0f || command.m_meshUV.y != 0.0f)
-    {
-        m_Impl->LogDiagnostic(model, command, Impl::DiagnosticMaterial, "material: Blend/stream UV path unsupported");
-        return false;
-    }
 
     ModernMeshGpu* mesh = m_Impl->GetMesh(model, command.m_IndexMesh);
     if (mesh == NULL || !mesh->Vao.IsValid())
     {
-        m_Impl->LogDiagnostic(model, command, Impl::DiagnosticMesh, "mesh: modern CPU mesh/VAO creation failed");
-        return false;
-    }
-
-    // Validation-stage policy: one skeleton upload per experimental draw. This
-    // avoids changing the proven legacy batching contract. Once visuals match,
-    // this moves to one atlas upload per FlushAllMesh().
-    m_Impl->Skeleton.BeginFrame();
-    const BMDModernSkeletonSubmission submission = BMDModernSkeletonPose::Stage(
-        m_Impl->Skeleton,
-        &model->m_pLastBoneMatrix[0][0][0],
-        static_cast<std::uint32_t>(model->NumBones),
-        model->m_fRequestScale);
-    if (!submission.Success)
-    {
-        m_Impl->LogDiagnostic(model, command, Impl::DiagnosticSkeleton, "skeleton: Stage/encoder rejected pose");
-        return false;
-    }
-    if (!m_Impl->SkeletonTexture.Upload(m_Impl->Skeleton))
-    {
-        m_Impl->LogDiagnostic(model, command, Impl::DiagnosticSkeleton, "skeleton: BonesTexture upload failed");
+        m_Impl->LogDiagnostic(model, command, Impl::DiagnosticMesh,
+                              "mesh: modern CPU mesh/VAO creation failed");
         return false;
     }
 
     BMDModernInstanceParams params;
-    params.Translate = model->m_bLastTranslate;
-    params.BodyScale = model->BodyScale;
-    params.BodyOrigin[0] = model->BodyOrigin[0];
-    params.BodyOrigin[1] = model->BodyOrigin[1];
-    params.BodyOrigin[2] = model->BodyOrigin[2];
+
+    // m_BonePalette is already the immutable legacy-final affine palette:
+    // requestScale, BodyScale and BodyOrigin are baked into the 3x4 matrices.
+    // Keep instance transform at identity to avoid applying them twice.
+    params.Translate = false;
+    params.BodyScale = 1.0f;
     params.NormalOffset = 0.0f;
     params.EnableLight = command.m_isLight;
+
     const bool alphaTexture = Bitmaps[command.m_TextureID].Components == 4;
     params.MinAlpha = (command.m_isAlpha < 0.99f || alphaTexture) ? 0.25f : 0.0f;
     params.BlendUV[0] = 0.0f;
@@ -489,12 +621,13 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
     params.ShadowLight[1] = 0.0f;
     params.ShadowLight[2] = 0.0f;
     params.ShadowLight[3] = 0.0f;
-    params.BoneIndex = submission.BoneIndex;
+    params.BoneIndex = submission->BoneIndex;
 
     const BMDModernInstance instance = BMDModernInstanceBuilder::Build(params);
     if (!m_Impl->InstanceBuffer.UploadAndAttach(mesh->Vao.GetVertexArray(), &instance, 1))
     {
-        m_Impl->LogDiagnostic(model, command, Impl::DiagnosticInstance, "instance: upload/attribute attach failed");
+        m_Impl->LogDiagnostic(model, command, Impl::DiagnosticInstance,
+                              "instance: upload/attribute attach failed");
         return false;
     }
 
@@ -510,7 +643,8 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
     if (!m_Impl->Bindings.Bind(Bitmaps[command.m_TextureID].TextureNumber,
                                m_Impl->SkeletonTexture))
     {
-        m_Impl->LogDiagnostic(model, command, Impl::DiagnosticBindings, "bindings: material/skeleton texture bind failed");
+        m_Impl->LogDiagnostic(model, command, Impl::DiagnosticBindings,
+                              "bindings: material/skeleton texture bind failed");
         glUseProgram(0);
         return false;
     }
@@ -525,35 +659,39 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
     glUseProgram(0);
 
     ++m_Impl->SuccessfulDraws;
-    const std::uint64_t poseHash = HashSkeletonPose(
-        &model->m_pLastBoneMatrix[0][0][0],
-        static_cast<std::uint32_t>(model->NumBones));
 
-    if (m_Impl->SelectedModel == NULL)
+    const std::uint32_t boneCount = GetPaletteBoneCount(command);
+    const std::uint64_t poseHash = HashSkeletonPose(command.m_BonePalette->data(), boneCount);
+
+    if (m_Impl->FirstModernModel == NULL)
     {
-        m_Impl->SelectedModel = model;
-        m_Impl->InitialPoseHash = poseHash;
-        m_Impl->InitialPoseHashValid = poseHash != 0;
+        m_Impl->FirstModernModel = model;
+        m_Impl->FirstPoseHash = poseHash;
+        m_Impl->FirstPoseHashValid = poseHash != 0;
+        if (!m_Impl->AtlasMode)
+            m_Impl->SelectedModel = model;
 
-        char message[320] = { 0 };
+        char message[352] = { 0 };
         sprintf_s(message,
-                  "complex modern BMD selected: %.31s (bones=%d, actions=%d, mesh=%d, texture=%d, action=%u, frame=%.3f)",
+                  "atlas modern BMD selected: %.31s (bones=%u, actions=%d, mesh=%d, texture=%d, BaseBone=%u, action=%u, frame=%.3f)",
                   model->Name,
-                  static_cast<int>(model->NumBones),
+                  boneCount,
                   static_cast<int>(model->NumActions),
                   command.m_IndexMesh,
                   command.m_TextureID,
+                  submission->BoneIndex,
                   static_cast<unsigned int>(model->CurrentAction),
                   model->CurrentAnimation);
         ModernLog(message);
     }
-    else if (!m_Impl->PoseChangeLogged && m_Impl->InitialPoseHashValid &&
-             poseHash != 0 && poseHash != m_Impl->InitialPoseHash)
+    else if (!m_Impl->FirstPoseChangeLogged &&
+             m_Impl->FirstModernModel == model &&
+             m_Impl->FirstPoseHashValid && poseHash != 0 && poseHash != m_Impl->FirstPoseHash)
     {
-        m_Impl->PoseChangeLogged = true;
-        char message[256] = { 0 };
+        m_Impl->FirstPoseChangeLogged = true;
+        char message[288] = { 0 };
         sprintf_s(message,
-                  "animated pose change observed: %.31s (draw=%llu, action=%u, frame=%.3f)",
+                  "atlas animated pose change observed: %.31s (draw=%llu, action=%u, frame=%.3f)",
                   model->Name,
                   static_cast<unsigned long long>(m_Impl->SuccessfulDraws),
                   static_cast<unsigned int>(model->CurrentAction),
