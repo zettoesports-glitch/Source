@@ -17,6 +17,12 @@ namespace OGL330
 // parity. Implemented in Render/Model/BMDModernObjectGuard.cpp.
 bool BMDModernShouldForceLegacyObject(const OBJECT* object);
 
+// Narrow legacy visual workaround for one-sided clothing on merchant_f. These
+// helpers preserve and restore the caller's cull state and are no-ops for every
+// other object/model.
+bool BMDModernBeginLegacyDoubleSidedObject(const OBJECT* object);
+void BMDModernEndLegacyDoubleSidedObject(bool active);
+
 namespace OGL330MODEL
 {
 	typedef struct _mvec3
@@ -172,11 +178,13 @@ class rRenderLayOut
 private:
 	bool m_ForcedLegacy;
 	bool m_PreviousShaderState;
+	bool m_LegacyDoubleSided;
 
 public:
 	rRenderLayOut(OBJECT* pObj)
 		: m_ForcedLegacy(false)
 		, m_PreviousShaderState(false)
+		, m_LegacyDoubleSided(false)
 	{
 		// NPC/monster BMD objects are shared assets with mutable per-instance
 		// state. Until the modern path snapshots every instance transform, render
@@ -196,12 +204,18 @@ public:
 			}
 		}
 
+		// merchant_f contains thin one-sided clothing geometry in this data set.
+		// Keep the override scoped to this layout so every other asset retains the
+		// original culling behavior.
+		m_LegacyDoubleSided = BMDModernBeginLegacyDoubleSidedObject(pObj);
+
 		OGL330MODEL::SetTargetRender(pObj);
 	}
 
 	~rRenderLayOut()
 	{
 		OGL330MODEL::SetTargetRender(NULL);
+		BMDModernEndLegacyDoubleSidedObject(m_LegacyDoubleSided);
 		if (m_ForcedLegacy)
 			OGL330::SetShaderState(m_PreviousShaderState);
 	}
