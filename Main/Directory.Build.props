@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Condition="'$(MSBuildProjectName)'=='Main'">
+    <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\Model\BMDModernInstanceBuilder.cpp" />
     <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\Model\BMDModernMesh.cpp" />
     <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\Model\BMDModernSkeletonPose.cpp" />
     <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\Model\SkeletonBuffer.cpp" />
