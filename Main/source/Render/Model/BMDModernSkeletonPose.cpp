@@ -5,6 +5,39 @@
 #include <cmath>
 #include <cstring>
 
+namespace
+{
+    // Validation-phase safety guard. The current capture path feeds the modern
+    // atlas from the legacy GPU palette, where object BodyScale/requestScale can
+    // already be baked into the 3x3 basis. The generated shaders expect model
+    // scale to be handled separately, so accepting a strongly non-unit basis can
+    // deform geometry. Until the transform split has CPU/GPU parity tests, keep
+    // those poses on the legacy renderer instead of drawing corrupted meshes.
+    static bool HasNearUnitRootBasis(const float* matrices)
+    {
+        if (matrices == NULL)
+            return false;
+
+        const float sx = std::sqrt(matrices[0] * matrices[0] +
+                                   matrices[1] * matrices[1] +
+                                   matrices[2] * matrices[2]);
+        const float sy = std::sqrt(matrices[4] * matrices[4] +
+                                   matrices[5] * matrices[5] +
+                                   matrices[6] * matrices[6]);
+        const float sz = std::sqrt(matrices[8] * matrices[8] +
+                                   matrices[9] * matrices[9] +
+                                   matrices[10] * matrices[10]);
+
+        if (!std::isfinite(sx) || !std::isfinite(sy) || !std::isfinite(sz))
+            return false;
+
+        const float tolerance = 0.02f;
+        return std::fabs(sx - 1.0f) <= tolerance &&
+               std::fabs(sy - 1.0f) <= tolerance &&
+               std::fabs(sz - 1.0f) <= tolerance;
+    }
+}
+
 bool BMDModernSkeletonPose::BuildAdjustedAffine3x4(
     const float* boneMatrices,
     std::uint32_t boneCount,
@@ -13,6 +46,9 @@ bool BMDModernSkeletonPose::BuildAdjustedAffine3x4(
 {
     outMatrices.clear();
     if (boneMatrices == NULL || boneCount == 0 || !std::isfinite(requestScale))
+        return false;
+
+    if (!HasNearUnitRootBasis(boneMatrices))
         return false;
 
     const float localScale =
