@@ -13,15 +13,24 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
     if (object == NULL)
         return false;
 
-    // BotBuffer objects are sent through the player-like viewport path. Until
-    // every shared BMD transform is captured per OBJECT instance, keep all
-    // remote player-like objects on the legacy renderer. The local Hero stays
-    // eligible for the modern path so Matrix4x4/atlas validation can continue.
-    const bool remotePlayerLike =
+    const bool isRemotePlayerLike =
         object->Kind == KIND_PLAYER &&
         Hero != NULL &&
         object != &Hero->Object;
 
+    // Staged rollout: remote players/BotBuffer are now allowed to reach the
+    // modern BMD path so the immutable per-command palette/transform snapshot
+    // can be validated with multiple live OBJECT instances. Keep an emergency
+    // runtime rollback that does not require recompilation.
+    const bool forceLegacyRemotePlayers =
+        GetPrivateProfileIntA("ModernRenderer", "ForceLegacyRemotePlayers", 0,
+                              ".\\Data\\Custom\\config.ini") != 0;
+
+    const bool remotePlayerLike = isRemotePlayerLike && forceLegacyRemotePlayers;
+
+    // NPC/monster shared-BMD instances remain quarantined until the remote
+    // player/BotBuffer rollout proves that independent live instances keep
+    // their own pose and transform under the modern batch/atlas path.
     const bool npcOrMonster =
         object->Kind == KIND_NPC ||
         object->Kind == KIND_MONSTER;
@@ -29,7 +38,31 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
     const bool forceLegacy = npcOrMonster || remotePlayerLike;
 
     if (!forceLegacy)
+    {
+        if (isRemotePlayerLike)
+        {
+            static std::unordered_set<const OBJECT*> loggedModernRemoteObjects;
+            if (loggedModernRemoteObjects.size() < 8u &&
+                loggedModernRemoteObjects.insert(object).second)
+            {
+                std::ofstream logFile("Data\\ModernBMD.log", std::ios::out | std::ios::app);
+                if (logFile.is_open())
+                {
+                    logFile
+                        << "[ModernBMD] object-instance rollout: remote-player/bot allowed to modern candidate"
+                        << " object=" << object
+                        << " type=" << object->Type
+                        << " position=(" << object->Position[0]
+                        << "," << object->Position[1]
+                        << "," << object->Position[2] << ")"
+                        << " scale=" << object->Scale
+                        << " rollback=ForceLegacyRemotePlayers"
+                        << "\n";
+                }
+            }
+        }
         return false;
+    }
 
     const char* reason = remotePlayerLike ? "remote-player/bot" : "npc/monster";
 
