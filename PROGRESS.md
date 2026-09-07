@@ -4,70 +4,61 @@
 
 ---
 
+## 2026-09-07 — Sessão 3 (FASE 5 — ImmediateRenderer)
+
+### FASE 5 — IMMEDIATERENDERER
+
+- [x] `Render/Immediate/ImmediateRenderer.h` criado como ponte explícita entre `glBegin/glEnd` e o renderer moderno.
+- [x] Staging de vértices com posição, cor, UV e normal.
+- [x] Ring-buffer allocator com capacidade fixa e reset seguro por frame.
+- [x] Batches separados por primitiva para permitir submissão posterior sem acoplar o código legado ao backend.
+- [x] Conversão de `Quads`, `QuadStrip`, `Polygon`, `TriangleFan` e `TriangleStrip` para `Triangles`.
+- [x] Conversão de `LineStrip` e `LineLoop` para `Lines`.
+- [x] API preparada para integração com OpenGL/Vulkan sem chamadas GL dentro do componente.
+
+### Decisão de segurança
+
+A integração direta dos 61 `glBegin` não será feita em massa nesta etapa. O `CoreGLCompat` já possui batching/stream VBO funcional; substituir todos os consumidores de uma vez aumentaria o risco. O próximo passo é conectar **um primeiro consumidor controlado** ao `ImmediateRenderer`, validar visualmente e então repetir por subsistema.
+
+### Próxima etapa
+
+**FASE 6 — CORE PROFILE:** começar a migração controlada de `glBegin/glEnd`, começando pelos consumidores de menor risco e mantendo `CoreGLCompat` como fallback.
+
+---
+
 ## 2026-09-07 — Sessão 2 (FASE 4 concluída — fundação criada)
 
 ### FASE 4 — FUNDAÇÃO DO RENDERER
 
-- [x] `Render/Core/RenderTypes.h` — handles, descritores de buffer e draw commands.
-- [x] `Render/Core/RenderConfig.h` — configuração central com fallback legado e `maxBones = 200`.
-- [x] `Render/Core/RenderStats.h` — contadores de draws, triângulos, binds e uploads.
-- [x] `Render/RHI/IRenderDevice.h` — contrato inicial independente do backend.
-- [x] `Render/State/BindState.h` — cache de shader, VAO, buffers, pipeline e 8 texture units.
-- [x] `Render/Shader/ShaderManager.h` — registry/cache inicial de shaders sem alterar `CShaderGL`.
-- [x] `Render/Uniforms/GlobalUBO.h` — layout do slot 0.
-- [x] `Render/Uniforms/SceneUBO.h` — layout do slot 1.
-- [x] `Render/Uniforms/BoneUBO.h` — layout do slot 2 com `MaxBones = 200`.
-- [x] `Render/OpenGL/OpenGLRenderDevice.h/.cpp` — backend inicial isolado da legacy.
+- [x] `Render/Core/RenderTypes.h`
+- [x] `Render/Core/RenderConfig.h`
+- [x] `Render/Core/RenderStats.h`
+- [x] `Render/RHI/IRenderDevice.h`
+- [x] `Render/State/BindState.h`
+- [x] `Render/Shader/ShaderManager.h`
+- [x] `Render/Uniforms/GlobalUBO.h`
+- [x] `Render/Uniforms/SceneUBO.h`
+- [x] `Render/Uniforms/BoneUBO.h`
+- [x] `Render/OpenGL/OpenGLRenderDevice.h/.cpp`
 
-### Limites intencionais desta etapa
-
-A FASE 4 cria a arquitetura, mas **não redireciona ainda os draws existentes**. Isso evita quebrar `CoreGLCompat`, `OGL330` e o caminho BMD já funcional. O `OpenGLRenderDevice` inicial mantém operações de buffer e draw atrás da RHI; a ligação física às APIs GL será feita durante a integração incremental das FASES 5–7.
-
-### Próxima etapa
-
-**FASE 5 — ImmediateRenderer:** evoluir o batching existente do `CoreGLCompat` para um componente explícito de renderização dinâmica, com ring buffer, conversão de primitivas e integração gradual dos 61 `glBegin`.
+A fundação foi criada em paralelo, sem redirecionar o renderer legado.
 
 ---
 
 ## 2026-09-07 — Sessão 2 (FASE 3 concluída)
 
-### FASE 3 — MAPA DE DEPENDÊNCIAS
+- [x] `RENDER_DEPENDENCY_MAP.md` criado.
+- [x] Pipeline e dependências documentados.
+- [x] 61 `glBegin` catalogados.
+- [x] Ordem segura de migração definida.
 
-- [x] `RENDER_DEPENDENCY_MAP.md` criado na branch `modernization`.
-- [x] Pipeline atual documentado: Winmain → CoreGLCompat / CShaderGL / OGL330.
-- [x] Dependências de `CoreGLCompat`, `CShaderGL`, `New_ModelBMD`, `New_RenderBMD`, `BoneManager` e `ZzzBMD` mapeadas.
-- [x] Fluxo BMD → VAO/VBO → shader → draw documentado.
-- [x] Fluxo `OBJECT::BoneTransform` → bone palette → `u_Bones` documentado.
-- [x] Estados `RENDER_*` e dependências de blend/depth/texture/shader/VAO identificados para futura `PipelineState`.
-- [x] Censo dos 61 `glBegin` e áreas consumidoras incorporado ao mapa.
-- [x] Ordem segura de migração definida, preservando `CoreGLCompat` como fallback.
-- [x] Vulkan mantido fora do caminho crítico até a RHI estar estável.
+## 2026-09-06 — Sessão 1
 
-**Commit FASE 3:** `51bf424e9117d3408783d4a30e0b015c7a239ddc`
-
-### Decisão para a FASE 4
-
-Não reescrever o renderer atual. A fundação será adicionada em paralelo.
-
----
-
-## 2026-09-06 — Sessão 1 (FASE 0 + FASE 1 + FASE 2)
-
-### FASE 0 — SEGURANÇA
 - [x] Git baseline `3b3abe2` e branch `modernization`.
 - [x] Build original `Global Release|x86` verificado sem erros.
-- [x] Baseline GPU: NVIDIA RTX 2060 · OpenGL 4.6 Core · GLSL 4.60 · driver 610.88.
+- [x] Baseline GPU: RTX 2060 · OpenGL 4.6 Core · GLSL 4.60.
 - [ ] FPS base e teste manual do cliente ainda pendentes.
-
-### FASE 1 — REFERÊNCIAS
-- [x] MuMain Yesid disponível como referência fora do repo.
-- [x] Repositórios de shaders OpenGL/Vulkan levantados.
-- [ ] MuMain Sven ainda não disponível no GitHub.
-
-### FASE 2 — AUDITORIA
-- [x] `LUOIS_RENDERER_AUDIT.md` criado.
-- [x] CoreGLCompat, CShaderGL, OGL330/BMD e GPU skinning auditados.
-- [x] 61 ocorrências reais de `glBegin` catalogadas.
+- [x] Auditoria do renderer e levantamento dos shaders concluídos.
 
 ## Como buildar
 
@@ -81,5 +72,4 @@ cd C:\MUVULKAN\Source\Main
 
 - `main` — baseline imutável (`3b3abe2`)
 - `modernization` — branch de trabalho atual
-- FASE 3: `51bf424e9117d3408783d4a30e0b015c7a239ddc`
-- FASE 4: concluída nesta sessão
+- FASE 5: staging + ring buffer + conversão de primitivas concluídos
