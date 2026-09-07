@@ -14,7 +14,6 @@
 #include "ZzzBMD.h"
 #include "ZzzTexture.h"
 
-#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
@@ -22,7 +21,6 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
-#include <vector>
 
 namespace
 {
@@ -202,53 +200,6 @@ namespace
         return static_cast<std::uint32_t>(count);
     }
 
-    // The legacy GPU palette intentionally bakes Transform(Translate)'s
-    // BodyScale/BodyOrigin into every affine matrix. The generated reference
-    // shaders expect those model transforms in the per-instance attributes
-    // instead. Recover the skeleton-only affine palette without touching the
-    // immutable legacy snapshot. requestScale/BoneScale remain in the 3x3 and
-    // therefore keep their established semantics.
-    static bool BuildModernSkeletonPalette(const OGL330MODEL::RenderMeshVAO& command,
-                                           std::vector<float>& out)
-    {
-        out.clear();
-        BMD* model = command.m_OldBMD;
-        if (model == NULL || !command.m_BonePalette || command.m_BonePalette->empty())
-            return false;
-
-        out.assign(command.m_BonePalette->begin(), command.m_BonePalette->end());
-        if (!model->m_bLastTranslate)
-            return true;
-
-        const float bodyScale = model->BodyScale;
-        if (!std::isfinite(bodyScale) || std::fabs(bodyScale) <= 0.000001f)
-            return false;
-
-        const float invScale = 1.0f / bodyScale;
-        const float origin[3] =
-        {
-            model->BodyOrigin[0],
-            model->BodyOrigin[1],
-            model->BodyOrigin[2]
-        };
-
-        const size_t boneCount = out.size() / 12u;
-        for (size_t bone = 0; bone < boneCount; ++bone)
-        {
-            float* matrix = out.data() + bone * 12u;
-            for (int row = 0; row < 3; ++row)
-            {
-                float* affineRow = matrix + row * 4;
-                affineRow[0] *= invScale;
-                affineRow[1] *= invScale;
-                affineRow[2] *= invScale;
-                affineRow[3] = (affineRow[3] - origin[row]) * invScale;
-            }
-        }
-
-        return true;
-    }
-
     struct MeshKey
     {
         BMD* Model;
@@ -318,7 +269,6 @@ struct BMDModernRuntime::Impl
     bool BatchPrepared;
     bool AtlasUploadLogged;
     bool MultiPoseLogged;
-    bool TransformSplitLogged;
     BMD* SelectedModel;
     BMD* FirstModernModel;
     bool FirstPoseHashValid;
@@ -362,7 +312,6 @@ struct BMDModernRuntime::Impl
         , BatchPrepared(false)
         , AtlasUploadLogged(false)
         , MultiPoseLogged(false)
-        , TransformSplitLogged(false)
         , SelectedModel(NULL)
         , FirstModernModel(NULL)
         , FirstPoseHashValid(false)
@@ -411,7 +360,6 @@ struct BMDModernRuntime::Impl
                 ModernLog("AtlasMode uses captured bone palettes; MinActions is ignored so animated player equipment with one local action can participate");
             if (MatrixSkeleton)
                 ModernLog("Matrix4x4 skeleton encoding selected for compatibility; QPS remains available with MatrixSkeleton=0");
-            ModernLog("generated-shader transform split enabled: skeleton keeps bone/requestScale; BodyScale and BodyOrigin are restored as instance attributes");
         }
         else
         {
@@ -470,6 +418,8 @@ struct BMDModernRuntime::Impl
 
     bool TryExperimentalProgram()
     {
+        // BMDExperimental.vs is the original QPS first-light shader. Never pair
+        // it with a Matrix4x4 atlas because its RequestBone() consumes 2 texels.
         if (MatrixSkeleton)
             return false;
 
@@ -716,18 +666,10 @@ bool BMDModernRuntime::PrepareBatch(const OGL330MODEL::MeshVAO& commands)
             continue;
         }
 
-        std::vector<float> modernPalette;
-        if (!BuildModernSkeletonPalette(command, modernPalette))
-        {
-            m_Impl->LogDiagnostic(model, command, Impl::DiagnosticSkeleton,
-                                  "skeleton: could not separate BodyScale/BodyOrigin from captured legacy palette");
-            continue;
-        }
-
         const std::uint32_t boneCount = GetPaletteBoneCount(command);
         const BMDModernSkeletonSubmission submission = m_Impl->Atlas.Stage(
             poseKey,
-            modernPalette.data(),
+            command.m_BonePalette->data(),
             boneCount,
             1.0f);
         if (!submission.Success)
@@ -814,11 +756,8 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
     }
 
     BMDModernInstanceParams params;
-    params.Translate = model->m_bLastTranslate;
-    params.BodyScale = model->m_bLastTranslate ? model->BodyScale : 1.0f;
-    params.BodyOrigin[0] = model->m_bLastTranslate ? model->BodyOrigin[0] : 0.0f;
-    params.BodyOrigin[1] = model->m_bLastTranslate ? model->BodyOrigin[1] : 0.0f;
-    params.BodyOrigin[2] = model->m_bLastTranslate ? model->BodyOrigin[2] : 0.0f;
+    params.Translate = false;
+    params.BodyScale = 1.0f;
     params.NormalOffset = 0.0f;
     params.EnableLight = command.m_isLight;
 
@@ -903,9 +842,9 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
         if (!m_Impl->AtlasMode)
             m_Impl->SelectedModel = model;
 
-        char message[512] = { 0 };
+        char message[448] = { 0 };
         sprintf_s(message,
-                  "atlas modern BMD selected: %.31s (bones=%u, actions=%d, mesh=%d, texture=%d, BaseBone=%u, action=%u, frame=%.3f, shader=%s, encoding=%s, translate=%d, bodyScale=%.3f)",
+                  "atlas modern BMD selected: %.31s (bones=%u, actions=%d, mesh=%d, texture=%d, BaseBone=%u, action=%u, frame=%.3f, shader=%s, encoding=%s)",
                   model->Name,
                   boneCount,
                   static_cast<int>(model->NumActions),
@@ -915,9 +854,7 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
                   static_cast<unsigned int>(model->CurrentAction),
                   model->CurrentAnimation,
                   m_Impl->Mode == Impl::ProgramMode::Generated ? "generated" : "experimental",
-                  m_Impl->EncodingName(),
-                  model->m_bLastTranslate ? 1 : 0,
-                  model->BodyScale);
+                  m_Impl->EncodingName());
         ModernLog(message);
     }
     else if (!m_Impl->FirstPoseChangeLogged &&
