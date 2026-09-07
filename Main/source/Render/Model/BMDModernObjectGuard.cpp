@@ -5,9 +5,96 @@
 #include "ZzzObject.h"
 #include "ZzzCharacter.h"
 #include "ZzzBMD.h"
+#include "ZzzOpenglUtil.h"
 
+#include <cstring>
 #include <fstream>
 #include <unordered_set>
+
+namespace
+{
+    int g_LegacyDoubleSidedDepth = 0;
+    GLboolean g_LegacyDoubleSidedPreviousGlCull = GL_FALSE;
+    bool g_LegacyDoubleSidedPreviousCullTracker = false;
+
+    bool IsMerchantFemaleLegacyDoubleSidedCandidate(const OBJECT* object)
+    {
+        if (object == NULL || Models == NULL || object->Type < 0)
+            return false;
+
+        const char* modelName = Models[object->Type].Name;
+        if (modelName == NULL || modelName[0] == '\0')
+            return false;
+
+        // The affected NPC is loaded as Data2\\Npc\\merchant_f.smd in this
+        // client data set. Match the asset name rather than a numeric model id
+        // so the workaround remains isolated if enum values move.
+        return std::strstr(modelName, "merchant_f") != NULL;
+    }
+}
+
+bool BMDModernBeginLegacyDoubleSidedObject(const OBJECT* object)
+{
+    if (!IsMerchantFemaleLegacyDoubleSidedCandidate(object))
+        return false;
+
+    if (g_LegacyDoubleSidedDepth == 0)
+    {
+        g_LegacyDoubleSidedPreviousGlCull = glIsEnabled(GL_CULL_FACE);
+        g_LegacyDoubleSidedPreviousCullTracker = CullFaceEnable;
+
+        static bool logged = false;
+        if (!logged)
+        {
+            logged = true;
+            std::ofstream logFile("Data\\ModernBMD.log", std::ios::out | std::ios::app);
+            if (logFile.is_open())
+            {
+                logFile
+                    << "[ModernBMD] legacy double-sided override active for merchant_f"
+                    << " type=" << object->Type
+                    << " model=" << Models[object->Type].Name
+                    << " reason=one-sided-clothing-cull"
+                    << "\n";
+            }
+        }
+    }
+
+    ++g_LegacyDoubleSidedDepth;
+
+    // Keep the real GL state disabled while making the legacy state tracker
+    // believe culling is already enabled. Opaque RenderMesh passes call
+    // DisableAlphaBlend(), which normally calls EnableCullFace(); with the
+    // tracker held true that call becomes a no-op and the one-sided clothing
+    // remains visible. Nested layout scopes reassert the same state.
+    glDisable(GL_CULL_FACE);
+    CullFaceEnable = true;
+    return true;
+}
+
+void BMDModernEndLegacyDoubleSidedObject(bool active)
+{
+    if (!active || g_LegacyDoubleSidedDepth <= 0)
+        return;
+
+    --g_LegacyDoubleSidedDepth;
+    if (g_LegacyDoubleSidedDepth == 0)
+    {
+        if (g_LegacyDoubleSidedPreviousGlCull == GL_TRUE)
+            glEnable(GL_CULL_FACE);
+        else
+            glDisable(GL_CULL_FACE);
+
+        CullFaceEnable = g_LegacyDoubleSidedPreviousCullTracker;
+    }
+    else
+    {
+        // A nested renderer scope ended while the merchant is still being
+        // rendered. Reassert the temporary physical/logical split.
+        glDisable(GL_CULL_FACE);
+        CullFaceEnable = true;
+    }
+}
 
 bool BMDModernShouldForceLegacyObject(const OBJECT* object)
 {
