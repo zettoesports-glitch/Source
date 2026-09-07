@@ -126,6 +126,7 @@ namespace OGL330MODEL
 		}
 
 		void AddBoneTransform(BMD* model, float(*BoneMatrix)[3][4], bool trans);
+		bool UploadBonePaletteUBO(const std::vector<float>& palette);
 		inline float* GetfinalBone() { return m_finalBone; }
 		void AddMeshCommand(BMD* pSrc, int idx, int RFlag, float Alpha, int BlendMesh, float Light, float BlendU, float BlendV, int Texture);
 		void FlushAllMesh();
