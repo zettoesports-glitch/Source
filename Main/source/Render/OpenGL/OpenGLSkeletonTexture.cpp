@@ -1,6 +1,6 @@
 #include "stdafx.h"
 #include "OpenGLSkeletonTexture.h"
-#include "SkeletonBuffer.h"
+#include "../Model/SkeletonBuffer.h"
 
 #include <algorithm>
 
