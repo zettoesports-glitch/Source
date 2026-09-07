@@ -23,6 +23,21 @@ namespace
                  v.x*m[2] + v.y*m[6] + v.z*m[10] };
     }
 
+    static Vec3 ShaderMatrixPoint(const float* c, Vec3 v)
+    {
+        // c contains the four GLSL mat4 columns emitted by EncodeMatrix4x4.
+        return { c[0]*v.x + c[4]*v.y + c[8]*v.z + c[12],
+                 c[1]*v.x + c[5]*v.y + c[9]*v.z + c[13],
+                 c[2]*v.x + c[6]*v.y + c[10]*v.z + c[14] };
+    }
+
+    static Vec3 ShaderMatrixNormal(const float* c, Vec3 v)
+    {
+        return { c[0]*v.x + c[4]*v.y + c[8]*v.z,
+                 c[1]*v.x + c[5]*v.y + c[9]*v.z,
+                 c[2]*v.x + c[6]*v.y + c[10]*v.z };
+    }
+
     static float Len(Vec3 v) { return std::sqrt(v.x*v.x + v.y*v.y + v.z*v.z); }
     static float Dot(Vec3 a, Vec3 b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
 
@@ -148,8 +163,8 @@ SkeletonEncoder::ValidationResult SkeletonEncoder::ValidateMatrixEncoding(
         Vec3 v{p[i*3],p[i*3+1],p[i*3+2]};
         Vec3 nn{n[i*3],n[i*3+1],n[i*3+2]};
         Vec3 cpu=TransformPointCpu(m,v);
-        Vec3 gpu=TransformPointCpu(encoded.data(),v); // encoded columns reconstruct same affine under GLSL convention
-        Vec3 cn=RotateCpu(m,nn), gn=RotateCpu(encoded.data(),nn);
+        Vec3 gpu=ShaderMatrixPoint(encoded.data(),v);
+        Vec3 cn=RotateCpu(m,nn), gn=ShaderMatrixNormal(encoded.data(),nn);
         r.MaxPositionError=std::max(r.MaxPositionError,Len({cpu.x-gpu.x,cpu.y-gpu.y,cpu.z-gpu.z}));
         r.MaxNormalError=std::max(r.MaxNormalError,Len({cn.x-gn.x,cn.y-gn.y,cn.z-gn.z}));
     }
@@ -175,7 +190,7 @@ SkeletonEncoder::ValidationResult SkeletonEncoder::ValidateQuaternionEncoding(
         Vec3 cn=RotateCpu(m,nn);
         Vec3 gn=ShaderQuaternionPoint(q,{0,0,0},s,nn);
         r.MaxPositionError=std::max(r.MaxPositionError,Len({cpu.x-gpu.x,cpu.y-gpu.y,cpu.z-gpu.z}));
-        r.MaxNormalError=std::max(r.MaxNormalError,Len({cn.x-gn.x,cpu.y*0+gn.y-cn.y,gn.z-cn.z}));
+        r.MaxNormalError=std::max(r.MaxNormalError,Len({cn.x-gn.x,cn.y-gn.y,cn.z-gn.z}));
     }
     r.Success=r.MaxPositionError<=epsilon && r.MaxNormalError<=epsilon;
     return r;
