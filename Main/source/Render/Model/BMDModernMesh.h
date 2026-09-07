@@ -11,7 +11,11 @@ struct _Mesh_t;
 // location 0: Position
 // location 1: UV
 // location 2: Normal
-// location 3: Bones[x = vertex node, y = normal node]
+// location 3: Bones[x = vertex node, y = legacy-compatible normal node]
+//
+// The current MU client legacy VAO stores only Vertex_t::Node and uses that
+// same bone for both position and normal transforms. Keep Bones.x == Bones.y
+// until a separately validated normal-node path is introduced.
 struct BMDModernVertex
 {
     float Position[3];
