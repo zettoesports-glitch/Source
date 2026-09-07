@@ -2,6 +2,7 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Condition="'$(MSBuildProjectName)'=='Main'">
     <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\Model\BMDModernMesh.cpp" />
+    <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\Model\BMDModernSkeletonPose.cpp" />
     <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\Model\SkeletonBuffer.cpp" />
     <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\Model\SkeletonEncoder.cpp" />
     <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\Model\SkeletonEncoderTests.cpp" />
