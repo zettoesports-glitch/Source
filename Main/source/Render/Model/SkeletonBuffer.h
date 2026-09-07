@@ -3,19 +3,21 @@
 #include <cstdint>
 #include <vector>
 
-// Backend-neutral skeleton storage. The physical layout must match the shader
-// variant selected by the renderer.
+// Backend-neutral skeleton staging storage. The physical texel layout must
+// match the shader variant selected by the renderer.
 class SkeletonBuffer
 {
 public:
     enum class StorageMode : std::uint32_t
     {
-        Matrix4x4 = 4,       // four float4 texels per bone
-        DualQuaternion = 2  // rotation quaternion + position/scale
+        Matrix4x4 = 4,                // four float4 texels per bone
+        QuaternionPositionScale = 2, // quaternion + translation/uniform-scale
+        DualQuaternion = QuaternionPositionScale // legacy naming compatibility
     };
 
     static constexpr std::uint32_t MatrixTexelsPerBone = 4;
-    static constexpr std::uint32_t DualQuatTexelsPerBone = 2;
+    static constexpr std::uint32_t QuaternionPositionScaleTexelsPerBone = 2;
+    static constexpr std::uint32_t DualQuatTexelsPerBone = QuaternionPositionScaleTexelsPerBone;
     static constexpr std::uint32_t MatrixFloatsPerBone = 16;
 
     struct Allocation
@@ -28,9 +30,14 @@ public:
 
     explicit SkeletonBuffer(StorageMode mode = StorageMode::Matrix4x4);
 
+    // Frame-local allocator. BaseBone is expressed in BONE UNITS, exactly as
+    // expected by shader input BoneIndex; the shader converts it to texels.
     void BeginFrame();
     Allocation Allocate(std::uint32_t boneCount);
 
+    // Encodes final/global MU affine 3x4 bone matrices into the selected shader
+    // storage format and writes them into the allocation. QPS mode rejects
+    // degenerate, non-uniform-scale, or sheared matrices.
     bool UploadAffine3x4(const Allocation& allocation,
                          const float* matrices,
                          std::uint32_t matrixCount);
