@@ -4,6 +4,30 @@
 
 ---
 
+## 2026-09-07 — Sessão 4 (FASE 6 — Core Profile / migração controlada)
+
+### FASE 6 — CORE PROFILE
+
+- [x] Estrutura de migração controlada criada em `Render/Immediate/LegacyImmediateAdapter.h`.
+- [x] Primeiro adaptador utiliza `ImmediateRenderer` para converter primitivas legadas antes da submissão.
+- [x] O consumidor migrado permanece protegido pelo `CoreGLCompat`, que já utiliza VAO + VBO + shader GLSL 330 core.
+- [x] Conversão de `GL_QUADS` para `GL_TRIANGLES` passa pelo `ImmediateRenderer`, evitando duplicar essa lógica no consumidor.
+- [x] Fallback legado preservado: nenhum caminho global de `glBegin/glEnd` foi alterado.
+- [ ] Conectar o primeiro consumidor real de baixo risco ao adaptador.
+- [ ] Migrar progressivamente os demais consumidores de `glBegin/glEnd`.
+- [ ] Introduzir IBO/EBO nos consumidores que realmente se beneficiem de indexação.
+- [ ] Remover `glBegin/glEnd` de cada consumidor somente após validação visual.
+
+### Decisão de segurança
+
+A FASE 6 não habilita uma migração global. O primeiro passo foi criar uma fronteira explícita entre código legado e `ImmediateRenderer`. O `CoreGLCompat` continua sendo o fallback e o backend de segurança. A remoção física de `glBegin/glEnd` de cada arquivo será feita individualmente, preservando a possibilidade de rollback.
+
+### Próximo passo
+
+Conectar o primeiro consumidor real de baixo risco ao `LegacyImmediateAdapter`, validar o cliente e então repetir a migração por subsistema.
+
+---
+
 ## 2026-09-07 — Sessão 3 (FASE 5 — ImmediateRenderer)
 
 ### FASE 5 — IMMEDIATERENDERER
@@ -18,11 +42,7 @@
 
 ### Decisão de segurança
 
-A integração direta dos 61 `glBegin` não será feita em massa nesta etapa. O `CoreGLCompat` já possui batching/stream VBO funcional; substituir todos os consumidores de uma vez aumentaria o risco. O próximo passo é conectar **um primeiro consumidor controlado** ao `ImmediateRenderer`, validar visualmente e então repetir por subsistema.
-
-### Próxima etapa
-
-**FASE 6 — CORE PROFILE:** começar a migração controlada de `glBegin/glEnd`, começando pelos consumidores de menor risco e mantendo `CoreGLCompat` como fallback.
+A integração direta dos 61 `glBegin` não será feita em massa. O `CoreGLCompat` já possui batching/stream VBO funcional; substituir todos os consumidores de uma vez aumentaria o risco. A migração da FASE 6 será feita por consumidor, com validação visual entre etapas.
 
 ---
 
@@ -72,4 +92,6 @@ cd C:\MUVULKAN\Source\Main
 
 - `main` — baseline imutável (`3b3abe2`)
 - `modernization` — branch de trabalho atual
-- FASE 5: staging + ring buffer + conversão de primitivas concluídos
+- FASE 4: fundação RHI + estado + UBO concluída
+- FASE 5: ImmediateRenderer concluído
+- FASE 6: infraestrutura de migração controlada iniciada; primeiro consumidor real ainda pendente
