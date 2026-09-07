@@ -21,8 +21,9 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
     // Staged rollout: remote players/BotBuffer are now allowed to reach the
     // modern BMD path so the immutable per-command palette/transform snapshot
     // can be validated with multiple live OBJECT instances. Keep an emergency
-    // runtime rollback that does not require recompilation.
-    const bool forceLegacyRemotePlayers =
+    // runtime rollback that does not require recompilation. The setting is read
+    // once per client process to avoid profile I/O in the per-object render path.
+    static const bool forceLegacyRemotePlayers =
         GetPrivateProfileIntA("ModernRenderer", "ForceLegacyRemotePlayers", 0,
                               ".\\Data\\Custom\\config.ini") != 0;
 
