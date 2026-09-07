@@ -26,9 +26,17 @@ namespace
     {
         if (message == NULL)
             return;
+
         OutputDebugStringA("[ModernBMD] ");
         OutputDebugStringA(message);
         OutputDebugStringA("\n");
+
+        // Keep a tiny persistent first-light trace in the client Data folder.
+        // This lets runtime validation distinguish a real modern draw from a
+        // visually identical legacy fallback without requiring a debugger.
+        std::ofstream logFile("Data\\ModernBMD.log", std::ios::out | std::ios::app);
+        if (logFile.is_open())
+            logFile << "[ModernBMD] " << message << '\n';
     }
 
     static std::string ReadTextFile(const char* path)
@@ -156,6 +164,9 @@ struct BMDModernRuntime::Impl
         , SelectedModel(NULL)
         , Skeleton(SkeletonBuffer::StorageMode::QuaternionPositionScale)
     {
+        ModernLog(Enabled
+            ? "ExperimentalBMD=1; first-light runtime enabled"
+            : "ExperimentalBMD=0; legacy renderer only");
     }
 
     bool EnsureProgram()
