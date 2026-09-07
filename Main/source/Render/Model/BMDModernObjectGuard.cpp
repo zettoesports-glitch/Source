@@ -152,11 +152,6 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
         Hero != NULL &&
         object != &Hero->Object;
 
-    // Ordinary map/world objects keep Kind == 0 from OBJECT::Initialize().
-    // Animated scenery is not part of the current character-focused ModernBMD
-    // rollout yet, so keep it on the established legacy transform/render path.
-    const bool worldObject = object->Kind == 0;
-
     // Safe default remains legacy. ForceLegacyRemotePlayers=0 explicitly opens
     // the diagnostic rollout. RemotePlayerClass then allows only one base class
     // (-1 = any; 0 wizard, 1 knight/BK, 2 elf), and RemotePlayerSingleObject=1
@@ -195,7 +190,7 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
         object->Kind == KIND_NPC ||
         object->Kind == KIND_MONSTER;
 
-    const bool forceLegacy = worldObject || npcOrMonster || remotePlayerLike;
+    const bool forceLegacy = npcOrMonster || remotePlayerLike;
 
     if (!forceLegacy)
     {
@@ -228,7 +223,7 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
         return false;
     }
 
-    const char* reason = worldObject ? "world-object" : "npc/monster";
+    const char* reason = "npc/monster";
     if (remotePlayerLike)
     {
         if (forceLegacyRemotePlayers)
@@ -239,15 +234,13 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
             reason = "remote-single-object-filter";
     }
 
-    // Avoid flooding diagnostics with the many one-bone walls/stones in map
-    // object pools. Log animated/skinned world objects, while preserving full
-    // diagnostics for NPC/monster and remote-player quarantine decisions.
-    bool shouldLog = !worldObject;
-    if (worldObject && Models != NULL && object->Type >= 0)
-        shouldLog = Models[object->Type].NumBones > 1;
-
+    // Log each live OBJECT address once. Besides documenting the temporary
+    // safety quarantine, this gives us concrete per-instance identity and
+    // position data for the shared-BMD transform bug. Include the BMD name so
+    // visual-only legacy regressions (for example one-sided clothing meshes)
+    // can be isolated to the exact asset without broad renderer changes.
     static std::unordered_set<const OBJECT*> loggedObjects;
-    if (shouldLog && loggedObjects.insert(object).second)
+    if (loggedObjects.insert(object).second)
     {
         std::ofstream logFile("Data\\ModernBMD.log", std::ios::out | std::ios::app);
         if (logFile.is_open())
