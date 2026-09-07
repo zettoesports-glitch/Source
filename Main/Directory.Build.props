@@ -5,6 +5,7 @@
     <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\Model\SkeletonBuffer.cpp" />
     <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\Model\SkeletonEncoder.cpp" />
     <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\Model\SkeletonEncoderTests.cpp" />
+    <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\OpenGL\OpenGLBMDModernInstanceBuffer.cpp" />
     <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\OpenGL\OpenGLBMDModernVAO.cpp" />
     <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\OpenGL\OpenGLSkeletonTexture.cpp" />
   </ItemGroup>
