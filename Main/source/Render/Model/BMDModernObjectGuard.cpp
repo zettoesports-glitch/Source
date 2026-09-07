@@ -152,6 +152,14 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
         Hero != NULL &&
         object != &Hero->Object;
 
+    // The Dark Raven is a CSPetDarkSpirit OBJECT (KIND_PET / MODEL_DARK_SPIRIT),
+    // not part of the owning Dark Lord's render batch. Its independent pet
+    // animation/effect path is not yet covered by the modern per-instance
+    // composite contract, so keep it entirely on the established legacy path.
+    const bool darkRavenPet =
+        object->Kind == KIND_PET &&
+        object->Type == MODEL_DARK_SPIRIT;
+
     // Safe default remains legacy. ForceLegacyRemotePlayers=0 explicitly opens
     // the diagnostic rollout. RemotePlayerClass then allows only one base class
     // (-1 = any; 0 wizard, 1 knight/BK, 2 elf), and RemotePlayerSingleObject=1
@@ -190,7 +198,7 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
         object->Kind == KIND_NPC ||
         object->Kind == KIND_MONSTER;
 
-    const bool forceLegacy = npcOrMonster || remotePlayerLike;
+    const bool forceLegacy = npcOrMonster || remotePlayerLike || darkRavenPet;
 
     if (!forceLegacy)
     {
@@ -223,7 +231,7 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
         return false;
     }
 
-    const char* reason = "npc/monster";
+    const char* reason = darkRavenPet ? "dark-raven-pet" : "npc/monster";
     if (remotePlayerLike)
     {
         if (forceLegacyRemotePlayers)
