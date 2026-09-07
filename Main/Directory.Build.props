@@ -5,6 +5,8 @@
     <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\Model\BMDModernMesh.cpp" />
     <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\Model\BMDModernRuntime.cpp" />
     <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\Model\BMDModernRuntimeProbe.cpp" />
+    <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\Model\BMDModernSkeletonAtlas.cpp" />
+    <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\Model\BMDModernSkeletonAtlasTests.cpp" />
     <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\Model\BMDModernSkeletonPose.cpp" />
     <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\Model\SkeletonBuffer.cpp" />
     <ClCompile Include="$(MSBuildProjectDirectory)\source\Render\Model\SkeletonEncoder.cpp" />
