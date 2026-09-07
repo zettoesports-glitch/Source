@@ -4,6 +4,7 @@
 
 #include "ZzzObject.h"
 #include "ZzzCharacter.h"
+#include "ZzzBMD.h"
 
 #include <fstream>
 #include <unordered_set>
@@ -68,19 +69,26 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
 
     // Log each live OBJECT address once. Besides documenting the temporary
     // safety quarantine, this gives us concrete per-instance identity and
-    // position data for the shared-BMD transform bug.
+    // position data for the shared-BMD transform bug. Include the BMD name so
+    // visual-only legacy regressions (for example one-sided clothing meshes)
+    // can be isolated to the exact asset without broad renderer changes.
     static std::unordered_set<const OBJECT*> loggedObjects;
     if (loggedObjects.insert(object).second)
     {
         std::ofstream logFile("Data\\ModernBMD.log", std::ios::out | std::ios::app);
         if (logFile.is_open())
         {
+            const char* modelName = "<unavailable>";
+            if (Models != NULL && object->Type >= 0 && Models[object->Type].Name[0] != '\0')
+                modelName = Models[object->Type].Name;
+
             logFile
                 << "[ModernBMD] object-instance guard: forcing legacy renderer"
                 << " reason=" << reason
                 << " object=" << object
                 << " kind=" << static_cast<unsigned int>(object->Kind)
                 << " type=" << object->Type
+                << " model=" << modelName
                 << " position=(" << object->Position[0]
                 << "," << object->Position[1]
                 << "," << object->Position[2] << ")"
