@@ -110,7 +110,7 @@ PixelInput _main(VertexInput _input)
         mat4 _259 = RequestBone(param_2, param_3);
         BoneMatrix = _259;
     }
-    vec3 normal = mat3(BoneMatrix[0].xyz, BoneMatrix[1].xyz, BoneMatrix[2].xyz) * _input.Normal;
+    vec3 normal = normalize(mat3(BoneMatrix[0].xyz, BoneMatrix[1].xyz, BoneMatrix[2].xyz) * _input.Normal);
     _output.Position += (vec4(normal, 0.0) * _input.BodyScale.y);
     vec4 _290 = _output.Position;
     vec3 _292 = _290.xyz * _input.BodyScale.x;
@@ -127,7 +127,8 @@ PixelInput _main(VertexInput _input)
     _output.MinAlpha = _input.Data.y;
     if (_input.Data.x == 1.0)
     {
-        float Luminosity = (dot(normal, GlobalConstantsData.LightPosition) * 0.800000011920928955078125) + 0.4000000059604644775390625;
+        float lightBlend = clamp(_input.BodyLight.w, 0.0, 1.0);
+        float Luminosity = (((dot(normal, GlobalConstantsData.LightPosition) * 0.800000011920928955078125) + 0.4000000059604644775390625) * lightBlend) + (1.0 - lightBlend);
         if (Luminosity < 0.20000000298023223876953125)
         {
             Luminosity = 0.20000000298023223876953125;
