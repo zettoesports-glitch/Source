@@ -28,16 +28,12 @@ void CGMShaderBMD::Render(OGL330MODEL::RenderMeshVAO& r)
 			DisableAlphaBlend();
 
 		if ((r.m_FlagRender & RENDER_NODEPTH) == RENDER_NODEPTH)
-		{
 			DisableDepthTest();
-		}
 
 		DisableTexture();
 
 		if (r.m_isAlpha < 0.99f)
-		{
 			EnableAlphaTest();
-		}
 	}
 	else if ((r.m_FlagRender & RENDER_CHROME) == RENDER_CHROME ||
 		(r.m_FlagRender & RENDER_CHROME2) == RENDER_CHROME2 ||
@@ -55,9 +51,7 @@ void CGMShaderBMD::Render(OGL330MODEL::RenderMeshVAO& r)
 			|| (r.m_FlagRender & RENDER_CHROME4) == RENDER_CHROME4
 			|| (r.m_FlagRender & RENDER_CHROME5) == RENDER_CHROME5
 			|| (r.m_FlagRender & RENDER_CHROME7) == RENDER_CHROME7)
-		{
 			EnableAlphaBlend();
-		}
 		else if ((r.m_FlagRender & RENDER_BRIGHT) == RENDER_BRIGHT)
 			EnableAlphaBlend();
 		else if ((r.m_FlagRender & RENDER_DARK) == RENDER_DARK)
@@ -70,9 +64,7 @@ void CGMShaderBMD::Render(OGL330MODEL::RenderMeshVAO& r)
 			EnableAlphaTest();
 
 		if ((r.m_FlagRender & RENDER_NODEPTH) == RENDER_NODEPTH)
-		{
 			DisableDepthTest();
-		}
 	}
 	else if ((r.m_FlagRender & RENDER_TEXTURE) == RENDER_TEXTURE)
 	{
@@ -80,26 +72,16 @@ void CGMShaderBMD::Render(OGL330MODEL::RenderMeshVAO& r)
 		BindTexture(r.m_TextureID);
 
 		if ((r.m_FlagRender & RENDER_BRIGHT) == RENDER_BRIGHT)
-		{
 			EnableAlphaBlend();
-		}
 		else if ((r.m_FlagRender & RENDER_DARK) == RENDER_DARK)
-		{
 			EnableAlphaBlendMinus();
-		}
-		else if (r.m_FlagRender < 0.99f || Bitmaps[r.m_TextureID].Components == 4)
-		{
+		else if (r.m_isAlpha < 0.99f || Bitmaps[r.m_TextureID].Components == 4)
 			EnableAlphaTest();
-		}
 		else
-		{
 			DisableAlphaBlend();
-		}
 
 		if ((r.m_FlagRender & RENDER_NODEPTH) == RENDER_NODEPTH)
-		{
 			DisableDepthTest();
-		}
 	}
 	else if ((r.m_FlagRender & RENDER_BRIGHT) == RENDER_BRIGHT)
 	{
@@ -108,9 +90,7 @@ void CGMShaderBMD::Render(OGL330MODEL::RenderMeshVAO& r)
 		DisableDepthMask();
 
 		if ((r.m_FlagRender & RENDER_NODEPTH) == RENDER_NODEPTH)
-		{
 			DisableDepthTest();
-		}
 	}
 
 	SendUniform(r.m_Shader, r.m_bodyLight, r.m_lightPosition, r.m_meshUV, r.m_setting1, r.m_setting2, r.m_isLight, (r.m_FlagRender & RENDER_SHADOWMAP), r.m_OldBMD->BodyOrigin);
@@ -127,7 +107,6 @@ void CGMShaderBMD::Render(OGL330MODEL::RenderMeshVAO& r)
 	glBindVertexArray(rNewMesh.VAO);
 	glDrawRangeElements(GL_TRIANGLES, 0, rNewMesh.IndexCount - 1, rNewMesh.IndexCount, GL_UNSIGNED_INT, NULL);
 	glBindVertexArray(0);
-
 }
 
 #endif
