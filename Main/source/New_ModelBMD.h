@@ -181,8 +181,9 @@ public:
 			m_PreviousShaderState = OGL330::IsShader();
 			if (m_PreviousShaderState)
 			{
-				if (GMMeshShader->HasPendingMeshes())
-					GMMeshShader->FlushAllMesh();
+				OGL330MODEL::CGMMeshShader* shader = OGL330MODEL::CGMMeshShader::Instance();
+				if (shader->HasPendingMeshes())
+					shader->FlushAllMesh();
 				OGL330::SetShaderState(false);
 				m_ForcedLegacy = true;
 			}
