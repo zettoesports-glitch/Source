@@ -3,6 +3,7 @@
 #include <memory>
 
 #if jdk_shader_local330
+#include "Render/Model/BMDGpuSkinningUBOBinding.h"
 class BMD;
 class OBJECT;
 
@@ -86,6 +87,7 @@ namespace OGL330MODEL
 		bool		m_Transfrom;
 		float* m_finalBone;
 		std::shared_ptr<std::vector<float> > m_CurrentBonePalette;
+		Render::BMDGpuSkinningUBOBinding m_BoneUBO;
 
 		CGMMeshShader(const CGMMeshShader&);
 		CGMMeshShader& operator=(const CGMMeshShader&);
