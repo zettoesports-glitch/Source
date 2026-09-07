@@ -33,6 +33,11 @@ namespace
     }
 }
 
+bool BMDModernLegacyCullSuppressed()
+{
+    return g_LegacyDoubleSidedDepth > 0;
+}
+
 bool BMDModernBeginLegacyDoubleSidedObject(const OBJECT* object)
 {
     if (!IsMerchantFemaleLegacyDoubleSidedCandidate(object))
@@ -62,11 +67,9 @@ bool BMDModernBeginLegacyDoubleSidedObject(const OBJECT* object)
 
     ++g_LegacyDoubleSidedDepth;
 
-    // Keep the real GL state disabled while making the legacy state tracker
-    // believe culling is already enabled. Opaque RenderMesh passes call
-    // DisableAlphaBlend(), which normally calls EnableCullFace(); with the
-    // tracker held true that call becomes a no-op and the one-sided clothing
-    // remains visible. Nested layout scopes reassert the same state.
+    // Disable culling physically. CoreGLCompat's filtered glEnable path blocks
+    // attempts to re-enable GL_CULL_FACE while this scoped override is active.
+    // Keep the legacy tracker at true so its common opaque path remains stable.
     glDisable(GL_CULL_FACE);
     CullFaceEnable = true;
     return true;
