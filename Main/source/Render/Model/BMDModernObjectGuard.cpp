@@ -17,6 +17,49 @@ namespace
     GLboolean g_LegacyDoubleSidedPreviousGlCull = GL_FALSE;
     bool g_LegacyDoubleSidedPreviousCullTracker = false;
 
+    const CHARACTER* FindCharacterForObject(const OBJECT* object)
+    {
+        if (object == NULL || CharactersClient == NULL)
+            return NULL;
+
+        for (int i = 0; i < MAX_CHARACTERS_CLIENT; ++i)
+        {
+            const CHARACTER* character = &CharactersClient[i];
+            if (&character->Object == object)
+                return character;
+        }
+
+        return NULL;
+    }
+
+    int GetRemoteBaseClass(const OBJECT* object)
+    {
+        const CHARACTER* character = FindCharacterForObject(object);
+        if (character == NULL)
+            return -1;
+
+        // CharacterManager::GetBaseClass() is Class & 0x7. Keep this guard
+        // dependency-light while preserving promoted-class compatibility.
+        return static_cast<int>(character->Class) & 0x7;
+    }
+
+    const char* RemoteBaseClassName(int baseClass)
+    {
+        switch (baseClass)
+        {
+        case CLASS_WIZARD: return "wizard";
+        case CLASS_KNIGHT: return "knight";
+        case CLASS_ELF: return "elf";
+        case CLASS_DARK: return "magic-gladiator";
+        case CLASS_DARK_LORD: return "dark-lord";
+        case CLASS_SUMMONER: return "summoner";
+#ifdef PBG_ADD_NEWCHAR_MONK
+        case CLASS_RAGEFIGHTER: return "rage-fighter";
+#endif
+        default: return "unknown";
+        }
+    }
+
     bool IsMerchantFemaleLegacyDoubleSidedCandidate(const OBJECT* object)
     {
         if (object == NULL || Models == NULL || object->Type < 0)
@@ -109,16 +152,37 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
         Hero != NULL &&
         object != &Hero->Object;
 
-    // Remote player/BotBuffer rollout exposed class/equipment deformation on
-    // Elf/BK while a simple SM remained visually correct. Keep remote players
-    // on the known-good legacy renderer by default while the multi-pose atlas
-    // and linked-item transform path are isolated. Set ForceLegacyRemotePlayers=0
-    // explicitly for controlled diagnostics; the setting is read once per client.
+    // Safe default remains legacy. ForceLegacyRemotePlayers=0 explicitly opens
+    // the diagnostic rollout. RemotePlayerClass then allows only one base class
+    // (-1 = any; 0 wizard, 1 knight/BK, 2 elf), and RemotePlayerSingleObject=1
+    // keeps only the first matching live OBJECT on the modern candidate path.
     static const bool forceLegacyRemotePlayers =
         GetPrivateProfileIntA("ModernRenderer", "ForceLegacyRemotePlayers", 1,
                               ".\\Data\\Custom\\config.ini") != 0;
+    static const int remotePlayerClass =
+        GetPrivateProfileIntA("ModernRenderer", "RemotePlayerClass", -1,
+                              ".\\Data\\Custom\\config.ini");
+    static const bool remotePlayerSingleObject =
+        GetPrivateProfileIntA("ModernRenderer", "RemotePlayerSingleObject", 1,
+                              ".\\Data\\Custom\\config.ini") != 0;
 
-    const bool remotePlayerLike = isRemotePlayerLike && forceLegacyRemotePlayers;
+    const int remoteBaseClass = isRemotePlayerLike ? GetRemoteBaseClass(object) : -1;
+    const bool remoteClassRejected =
+        isRemotePlayerLike && !forceLegacyRemotePlayers &&
+        remotePlayerClass >= 0 && remoteBaseClass != remotePlayerClass;
+
+    static const OBJECT* selectedRemoteObject = NULL;
+    bool remoteObjectRejected = false;
+    if (isRemotePlayerLike && !forceLegacyRemotePlayers && !remoteClassRejected && remotePlayerSingleObject)
+    {
+        if (selectedRemoteObject == NULL)
+            selectedRemoteObject = object;
+        remoteObjectRejected = selectedRemoteObject != object;
+    }
+
+    const bool remotePlayerLike =
+        isRemotePlayerLike &&
+        (forceLegacyRemotePlayers || remoteClassRejected || remoteObjectRejected);
 
     // NPC/monster shared-BMD instances remain quarantined until the remote
     // player/BotBuffer composite-render path has full per-instance parity.
@@ -143,6 +207,10 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
                         << "[ModernBMD] object-instance rollout: remote-player/bot allowed to modern candidate"
                         << " object=" << object
                         << " type=" << object->Type
+                        << " class=" << remoteBaseClass
+                        << " className=" << RemoteBaseClassName(remoteBaseClass)
+                        << " classFilter=" << remotePlayerClass
+                        << " singleObject=" << (remotePlayerSingleObject ? 1 : 0)
                         << " position=(" << object->Position[0]
                         << "," << object->Position[1]
                         << "," << object->Position[2] << ")"
@@ -155,7 +223,16 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
         return false;
     }
 
-    const char* reason = remotePlayerLike ? "remote-player/bot" : "npc/monster";
+    const char* reason = "npc/monster";
+    if (remotePlayerLike)
+    {
+        if (forceLegacyRemotePlayers)
+            reason = "remote-player/bot";
+        else if (remoteClassRejected)
+            reason = "remote-class-filter";
+        else if (remoteObjectRejected)
+            reason = "remote-single-object-filter";
+    }
 
     // Log each live OBJECT address once. Besides documenting the temporary
     // safety quarantine, this gives us concrete per-instance identity and
@@ -178,7 +255,18 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
                 << " object=" << object
                 << " kind=" << static_cast<unsigned int>(object->Kind)
                 << " type=" << object->Type
-                << " model=" << modelName
+                << " model=" << modelName;
+
+            if (isRemotePlayerLike)
+            {
+                logFile
+                    << " class=" << remoteBaseClass
+                    << " className=" << RemoteBaseClassName(remoteBaseClass)
+                    << " classFilter=" << remotePlayerClass
+                    << " singleObject=" << (remotePlayerSingleObject ? 1 : 0);
+            }
+
+            logFile
                 << " position=(" << object->Position[0]
                 << "," << object->Position[1]
                 << "," << object->Position[2] << ")"
