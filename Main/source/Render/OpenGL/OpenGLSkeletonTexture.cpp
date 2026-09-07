@@ -38,7 +38,14 @@ bool OpenGLSkeletonTexture::Upload(const SkeletonBuffer& skeleton)
         return false;
     }
 
-    // The shader uses texelFetch, therefore filtering and mipmaps are disabled.
+    // Upload is allowed to run before a mixed modern/legacy draw loop. Preserve
+    // the caller's active unit and GL_TEXTURE_2D binding so atlas preparation
+    // cannot contaminate the following legacy command.
+    GLint previousActiveTexture = GL_TEXTURE0;
+    GLint previousTextureBinding = 0;
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &previousActiveTexture);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTextureBinding);
+
     if (m_Texture == 0)
     {
         glGenTextures(1, &m_Texture);
@@ -56,7 +63,8 @@ bool OpenGLSkeletonTexture::Upload(const SkeletonBuffer& skeleton)
         glBindTexture(GL_TEXTURE_2D, m_Texture);
     }
 
-    // Pad the last row so glTexImage2D always receives width * height texels.
+    // texelFetch addresses a fixed 1024-wide texture. Pad the final row so the
+    // upload always covers complete rows.
     std::vector<float> upload;
     const size_t requiredFloats = static_cast<size_t>(m_Width) * requiredHeight * 4u;
     if (texels.size() != requiredFloats)
@@ -68,18 +76,40 @@ bool OpenGLSkeletonTexture::Upload(const SkeletonBuffer& skeleton)
     const float* data = upload.empty() ? texels.data() : upload.data();
 
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    glTexImage2D(
-        GL_TEXTURE_2D,
-        0,
-        GL_RGBA32F,
-        static_cast<GLsizei>(m_Width),
-        static_cast<GLsizei>(requiredHeight),
-        0,
-        GL_RGBA,
-        GL_FLOAT,
-        data);
 
-    m_Height = requiredHeight;
+    if (m_Height < requiredHeight)
+    {
+        // Grow only when necessary. Once allocated, subsequent batches that fit
+        // use glTexSubImage2D instead of reallocating GPU storage every draw.
+        glTexImage2D(
+            GL_TEXTURE_2D,
+            0,
+            GL_RGBA32F,
+            static_cast<GLsizei>(m_Width),
+            static_cast<GLsizei>(requiredHeight),
+            0,
+            GL_RGBA,
+            GL_FLOAT,
+            data);
+        m_Height = requiredHeight;
+    }
+    else
+    {
+        glTexSubImage2D(
+            GL_TEXTURE_2D,
+            0,
+            0,
+            0,
+            static_cast<GLsizei>(m_Width),
+            static_cast<GLsizei>(requiredHeight),
+            GL_RGBA,
+            GL_FLOAT,
+            data);
+    }
+
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previousTextureBinding));
+    glActiveTexture(static_cast<GLenum>(previousActiveTexture));
+
     m_UploadedGeneration = skeleton.GetGeneration();
     return true;
 }
