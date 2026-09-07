@@ -16,7 +16,7 @@ namespace Render
             TexCoordLocation = 2,
             BoneIndexLocation = 3,
             BoneWeightLocation = 4,
-            BoneUBOSlot = BoneUBOSlot
+            BoneUBOSlot = ::Render::BoneUBOSlot
         };
     };
 
