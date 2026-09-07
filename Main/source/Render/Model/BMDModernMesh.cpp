@@ -193,10 +193,11 @@ bool BuildBMDModernMesh(const _Mesh_t& mesh, BMDModernMeshData& outMesh)
                 invalidTexcoordRefs,
                 invalidNormalRefs);
 
-    // Invalid source vertex references or negative bone nodes are unsafe for
-    // the modern texture-backed skeleton path. Reject the mesh so the caller
-    // automatically falls back to the established legacy renderer.
-    if (invalidVertexRefs != 0 || negativeBoneRefs != 0)
+    // Invalid source vertex references, negative nodes, or a node outside the
+    // globally supported skeleton range are unsafe for the texture-backed
+    // atlas. Reject the mesh so a malformed/foreign node can never read into
+    // the next pose allocation in BonesTexture.
+    if (invalidVertexRefs != 0 || negativeBoneRefs != 0 || maxBone >= MAX_BONES)
     {
         outMesh.Clear();
         return false;
