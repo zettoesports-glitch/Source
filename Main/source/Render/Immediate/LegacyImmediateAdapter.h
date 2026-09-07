@@ -7,9 +7,9 @@
 
 namespace Render
 {
-    // Controlled migration adapter for one legacy immediate-mode consumer.
-    // ImmediateRenderer performs the primitive conversion; CoreGLCompat remains
-    // the safety/backend bridge until the consumer is ready for direct RHI use.
+    // Controlled migration adapter for legacy immediate-mode consumers.
+    // ImmediateRenderer owns primitive conversion/staging; CoreGLCompat remains
+    // the compatibility submission bridge until the consumer moves to the RHI.
     inline void DrawQuadThroughImmediate(const float positions[4][3],
                                          const float texCoords[4][2],
                                          const float color[4])
