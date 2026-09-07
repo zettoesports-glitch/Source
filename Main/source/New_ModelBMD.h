@@ -55,6 +55,15 @@ namespace OGL330MODEL
 		mvec4   m_meshUV;
 		mvec4   m_lightPosition;
 		std::shared_ptr<std::vector<float> > m_BonePalette;
+
+		// Immutable transform snapshot for the modern generated-shader path.
+		// m_BonePalette stays byte-for-byte compatible with the legacy u_Bones
+		// renderer; the modern runtime removes these baked model transforms from
+		// that captured palette and sends them through the official instance
+		// attributes instead.
+		bool	m_ModernTranslate;
+		float	m_ModernBodyScale;
+		mvec3	m_ModernBodyOrigin;
 	public:
 		RenderMeshVAO()
 		{
@@ -65,6 +74,9 @@ namespace OGL330MODEL
 			m_Shader = -1;
 			m_isAlpha = 1.f;
 			m_isColor.x = m_isColor.y = m_isColor.z = 1.f;
+			m_ModernTranslate = false;
+			m_ModernBodyScale = 1.f;
+			m_ModernBodyOrigin.x = m_ModernBodyOrigin.y = m_ModernBodyOrigin.z = 0.f;
 		}
 	};
 	typedef std::vector<RenderMeshVAO> MeshVAO;
