@@ -11,15 +11,10 @@ public:
 
     bool IsEnabled() const;
 
-    // Builds one frame-local skeleton atlas from the raw final/global MU
-    // BoneTransform matrices captured by the legacy command frontend.
-    void PrepareFrame(const OGL330MODEL::MeshVAO& commands);
-
-    // Attempts the deliberately narrow first modern BMD draw. Returning false
-    // means the caller must execute the legacy renderer unchanged.
+    // Deliberately narrow first-light path. It stages the current BMD's final
+    // BoneTransform into BonesTexture and draws only the first eligible base
+    // textured BMD. False always means: execute the legacy renderer unchanged.
     bool TryRender(const OGL330MODEL::RenderMeshVAO& command);
-
-    void EndFrame();
 
 private:
     BMDModernRuntime();
