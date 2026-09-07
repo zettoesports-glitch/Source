@@ -33,6 +33,12 @@ namespace
             const std::uint32_t safePositionBone =
                 positionBone >= 0 ? static_cast<std::uint32_t>(positionBone) : 0u;
 
+            // Preserve the real legacy VAO contract. VertexBMD stores one bone
+            // (Vertex_t::Node * 3), and Model.vs uses that same bone for both
+            // position and normal transforms. Some BMDs carry Normal_t::Node
+            // values that differ from the vertex node; using those here caused
+            // lighting/appearance divergence on NPCs even though player gear
+            // happened to look correct.
             out.Bones[0] = safePositionBone;
             out.Bones[1] = safePositionBone;
         }
@@ -49,9 +55,6 @@ namespace
             out.Normal[0] = sourceNormal.Normal[0];
             out.Normal[1] = sourceNormal.Normal[1];
             out.Normal[2] = sourceNormal.Normal[2];
-
-            if (sourceNormal.Node >= 0)
-                out.Bones[1] = static_cast<std::uint32_t>(sourceNormal.Node);
         }
 
         return out;
