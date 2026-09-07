@@ -57,6 +57,7 @@ namespace
             const std::string logPath = JoinPath(exeDirectory, "ModernBMD_boot.log");
             const std::string configPath = JoinPath(exeDirectory, "Data\\Custom\\config.ini");
             const std::string generatedVertexPath = JoinPath(exeDirectory, "Data\\Effect\\Modern\\Generated\\models\\texture.vs");
+            const std::string generatedMatrixVertexPath = JoinPath(exeDirectory, "Data\\Effect\\Modern\\Generated\\models\\texture_matrix.vs");
             const std::string generatedPixelPath = JoinPath(exeDirectory, "Data\\Effect\\Modern\\Generated\\models\\texture.ps");
             const std::string experimentalVertexPath = JoinPath(exeDirectory, "Data\\Effect\\Modern\\BMDExperimental.vs");
             const std::string experimentalFragmentPath = JoinPath(exeDirectory, "Data\\Effect\\Modern\\BMDExperimental.fs");
@@ -70,21 +71,26 @@ namespace
                 "ModernRenderer", "UseGeneratedShaders", 1, configPath.c_str());
             const int atlas = GetPrivateProfileIntA(
                 "ModernRenderer", "AtlasMode", 1, configPath.c_str());
+            const int matrixSkeleton = GetPrivateProfileIntA(
+                "ModernRenderer", "MatrixSkeleton", 1, configPath.c_str());
 
             std::ofstream log(logPath.c_str(), std::ios::out | std::ios::trunc);
             if (!log.is_open())
                 return;
 
-            log << "[ModernBMD-Probe] build=2026-09-07-atlas-generated-shaders-v1\n";
+            log << "[ModernBMD-Probe] build=2026-09-07-atlas-matrix-skeleton-v2\n";
             log << "exe=" << exePath << "\n";
             log << "cwd=" << cwd << "\n";
             log << "config=" << configPath
                 << " exists=" << (FileExists(configPath) ? 1 : 0)
                 << " ExperimentalBMD=" << experimental
                 << " AtlasMode=" << atlas
-                << " UseGeneratedShaders=" << generated << "\n";
-            log << "generatedVertex=" << generatedVertexPath
+                << " UseGeneratedShaders=" << generated
+                << " MatrixSkeleton=" << matrixSkeleton << "\n";
+            log << "generatedQPSVertex=" << generatedVertexPath
                 << " exists=" << (FileExists(generatedVertexPath) ? 1 : 0) << "\n";
+            log << "generatedMatrixVertex=" << generatedMatrixVertexPath
+                << " exists=" << (FileExists(generatedMatrixVertexPath) ? 1 : 0) << "\n";
             log << "generatedPixel=" << generatedPixelPath
                 << " exists=" << (FileExists(generatedPixelPath) ? 1 : 0) << "\n";
             log << "experimentalVertex=" << experimentalVertexPath
