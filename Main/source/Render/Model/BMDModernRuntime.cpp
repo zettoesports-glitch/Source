@@ -33,9 +33,8 @@ namespace
         OutputDebugStringA(message);
         OutputDebugStringA("\n");
 
-        // Keep a tiny persistent first-light trace in the client Data folder.
-        // This lets runtime validation distinguish a real modern draw from a
-        // visually identical legacy fallback without requiring a debugger.
+        // Persistent validation trace. This distinguishes a real modern draw
+        // from a visually identical legacy fallback without requiring a debugger.
         std::ofstream logFile("Data\\ModernBMD.log", std::ios::out | std::ios::app);
         if (logFile.is_open())
             logFile << "[ModernBMD] " << message << '\n';
@@ -121,9 +120,8 @@ namespace
         if (matrices == NULL || boneCount == 0)
             return 0;
 
-        // FNV-1a over the exact affine matrices. We only use this as a runtime
-        // validation signal: a different hash on a later draw proves that a
-        // live animated pose reached the modern skeleton path.
+        // FNV-1a over the exact affine matrices. A different hash on a later
+        // draw proves that a live animated pose reached the modern skeleton path.
         const unsigned char* bytes = reinterpret_cast<const unsigned char*>(matrices);
         const size_t byteCount = static_cast<size_t>(boneCount) * 12u * sizeof(float);
         std::uint64_t hash = 1469598103934665603ull;
@@ -162,7 +160,21 @@ namespace
 
 struct BMDModernRuntime::Impl
 {
+    enum DiagnosticBits
+    {
+        DiagnosticBasic = 1u << 0,
+        DiagnosticFilter = 1u << 1,
+        DiagnosticMaterial = 1u << 2,
+        DiagnosticMesh = 1u << 3,
+        DiagnosticSkeleton = 1u << 4,
+        DiagnosticInstance = 1u << 5,
+        DiagnosticBindings = 1u << 6
+    };
+
     bool Enabled;
+    bool Diagnostics;
+    int DiagnosticLimit;
+    int DiagnosticMessages;
     int MinBones;
     int MinActions;
     char TargetName[64];
@@ -181,10 +193,16 @@ struct BMDModernRuntime::Impl
     OpenGLBMDModernBindings Bindings;
     OpenGLBMDModernInstanceBuffer InstanceBuffer;
     std::unordered_map<MeshKey, std::unique_ptr<ModernMeshGpu>, MeshKeyHash> Meshes;
+    std::unordered_map<BMD*, unsigned int> DiagnosticMasks;
 
     Impl()
         : Enabled(GetPrivateProfileIntA("ModernRenderer", "ExperimentalBMD", 0,
                                         ".\\Data\\Custom\\config.ini") != 0)
+        , Diagnostics(GetPrivateProfileIntA("ModernRenderer", "Diagnostics", 1,
+                                            ".\\Data\\Custom\\config.ini") != 0)
+        , DiagnosticLimit(GetPrivateProfileIntA("ModernRenderer", "DiagnosticLimit", 24,
+                                                ".\\Data\\Custom\\config.ini"))
+        , DiagnosticMessages(0)
         , MinBones(GetPrivateProfileIntA("ModernRenderer", "MinBones", 20,
                                          ".\\Data\\Custom\\config.ini"))
         , MinActions(GetPrivateProfileIntA("ModernRenderer", "MinActions", 2,
@@ -211,13 +229,21 @@ struct BMDModernRuntime::Impl
             MinBones = MAX_BONES;
         if (MinActions < 1)
             MinActions = 1;
+        if (DiagnosticLimit < 1)
+            DiagnosticLimit = 1;
+        if (DiagnosticLimit > 128)
+            DiagnosticLimit = 128;
 
         if (Enabled)
         {
-            char message[256] = { 0 };
+            char message[320] = { 0 };
             sprintf_s(message,
-                      "ExperimentalBMD=1; complex validation enabled (MinBones=%d, MinActions=%d, TargetName=%s)",
-                      MinBones, MinActions, TargetName[0] != '\0' ? TargetName : "<any>");
+                      "ExperimentalBMD=1; complex validation enabled (MinBones=%d, MinActions=%d, TargetName=%s, Diagnostics=%d, Limit=%d)",
+                      MinBones,
+                      MinActions,
+                      TargetName[0] != '\0' ? TargetName : "<any>",
+                      Diagnostics ? 1 : 0,
+                      DiagnosticLimit);
             ModernLog(message);
         }
         else
@@ -261,15 +287,41 @@ struct BMDModernRuntime::Impl
         return true;
     }
 
-    bool MatchesSelectionFilter(const BMD* model) const
+    void LogDiagnostic(BMD* model,
+                       const OGL330MODEL::RenderMeshVAO& command,
+                       unsigned int bit,
+                       const char* reason)
     {
-        if (model == NULL)
-            return false;
-        if (model->NumBones < MinBones || model->NumActions < MinActions)
-            return false;
-        if (TargetName[0] != '\0' && std::strstr(model->Name, TargetName) == NULL)
-            return false;
-        return true;
+        if (!Diagnostics || model == NULL || reason == NULL ||
+            DiagnosticMessages >= DiagnosticLimit)
+        {
+            return;
+        }
+
+        unsigned int& mask = DiagnosticMasks[model];
+        if ((mask & bit) != 0u)
+            return;
+
+        mask |= bit;
+        ++DiagnosticMessages;
+
+        char message[512] = { 0 };
+        sprintf_s(message,
+                  "candidate %.31s: bones=%d actions=%d mesh=%d flags=0x%08X texture=%d uv=(%.3f,%.3f,%.3f) -> %s",
+                  model->Name,
+                  static_cast<int>(model->NumBones),
+                  static_cast<int>(model->NumActions),
+                  command.m_IndexMesh,
+                  static_cast<unsigned int>(command.m_FlagRender),
+                  command.m_TextureID,
+                  command.m_meshUV.x,
+                  command.m_meshUV.y,
+                  command.m_meshUV.z,
+                  reason);
+        ModernLog(message);
+
+        if (DiagnosticMessages == DiagnosticLimit)
+            ModernLog("diagnostic limit reached; further candidate fallback messages suppressed");
     }
 
     ModernMeshGpu* GetMesh(BMD* model, int meshIndex)
@@ -325,30 +377,75 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
         return false;
 
     BMD* model = command.m_OldBMD;
-    if (model == NULL || model->NumBones <= 1 || model->m_pLastBoneMatrix == NULL ||
-        command.m_TextureID < 0)
+    if (model == NULL)
         return false;
+
+    if (model->NumBones <= 1)
+    {
+        m_Impl->LogDiagnostic(model, command, Impl::DiagnosticBasic, "fallback: NumBones <= 1");
+        return false;
+    }
+    if (model->m_pLastBoneMatrix == NULL)
+    {
+        m_Impl->LogDiagnostic(model, command, Impl::DiagnosticBasic, "fallback: no last BoneTransform");
+        return false;
+    }
+    if (command.m_TextureID < 0)
+    {
+        m_Impl->LogDiagnostic(model, command, Impl::DiagnosticBasic, "fallback: invalid texture id");
+        return false;
+    }
 
     // Until one complex model is proven, ignore small/static BMDs. Once a model
     // succeeds it becomes the only selected asset for this process, keeping the
     // experiment narrow while all other BMDs continue through the legacy path.
-    if (m_Impl->SelectedModel == NULL && !m_Impl->MatchesSelectionFilter(model))
+    if (m_Impl->SelectedModel == NULL)
+    {
+        if (model->NumBones < m_Impl->MinBones)
+        {
+            m_Impl->LogDiagnostic(model, command, Impl::DiagnosticFilter, "filter: below MinBones");
+            return false;
+        }
+        if (model->NumActions < m_Impl->MinActions)
+        {
+            m_Impl->LogDiagnostic(model, command, Impl::DiagnosticFilter, "filter: below MinActions");
+            return false;
+        }
+        if (m_Impl->TargetName[0] != '\0' && std::strstr(model->Name, m_Impl->TargetName) == NULL)
+        {
+            m_Impl->LogDiagnostic(model, command, Impl::DiagnosticFilter, "filter: TargetName mismatch");
+            return false;
+        }
+    }
+    else if (m_Impl->SelectedModel != model)
+    {
         return false;
-    if (m_Impl->SelectedModel != NULL && m_Impl->SelectedModel != model)
-        return false;
+    }
 
     // Complex-validation still supports only the ordinary texture path.
-    // BlendMesh exposes meshUV.z=1 in the legacy frontend, while chrome/metal/
-    // oil/shadow/etc. carry flags outside this allow-list and therefore fall back.
     const int allowedFlags = RENDER_TEXTURE | RENDER_NODEPTH;
-    if ((command.m_FlagRender & RENDER_TEXTURE) == 0 ||
-        (command.m_FlagRender & ~allowedFlags) != 0 ||
-        command.m_meshUV.z != 0.0f || command.m_meshUV.x != 0.0f || command.m_meshUV.y != 0.0f)
+    if ((command.m_FlagRender & RENDER_TEXTURE) == 0)
+    {
+        m_Impl->LogDiagnostic(model, command, Impl::DiagnosticMaterial, "material: not RENDER_TEXTURE");
         return false;
+    }
+    if ((command.m_FlagRender & ~allowedFlags) != 0)
+    {
+        m_Impl->LogDiagnostic(model, command, Impl::DiagnosticMaterial, "material: unsupported render flags");
+        return false;
+    }
+    if (command.m_meshUV.z != 0.0f || command.m_meshUV.x != 0.0f || command.m_meshUV.y != 0.0f)
+    {
+        m_Impl->LogDiagnostic(model, command, Impl::DiagnosticMaterial, "material: Blend/stream UV path unsupported");
+        return false;
+    }
 
     ModernMeshGpu* mesh = m_Impl->GetMesh(model, command.m_IndexMesh);
     if (mesh == NULL || !mesh->Vao.IsValid())
+    {
+        m_Impl->LogDiagnostic(model, command, Impl::DiagnosticMesh, "mesh: modern CPU mesh/VAO creation failed");
         return false;
+    }
 
     // Validation-stage policy: one skeleton upload per experimental draw. This
     // avoids changing the proven legacy batching contract. Once visuals match,
@@ -359,8 +456,16 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
         &model->m_pLastBoneMatrix[0][0][0],
         static_cast<std::uint32_t>(model->NumBones),
         model->m_fRequestScale);
-    if (!submission.Success || !m_Impl->SkeletonTexture.Upload(m_Impl->Skeleton))
+    if (!submission.Success)
+    {
+        m_Impl->LogDiagnostic(model, command, Impl::DiagnosticSkeleton, "skeleton: Stage/encoder rejected pose");
         return false;
+    }
+    if (!m_Impl->SkeletonTexture.Upload(m_Impl->Skeleton))
+    {
+        m_Impl->LogDiagnostic(model, command, Impl::DiagnosticSkeleton, "skeleton: BonesTexture upload failed");
+        return false;
+    }
 
     BMDModernInstanceParams params;
     params.Translate = model->m_bLastTranslate;
@@ -388,7 +493,10 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
 
     const BMDModernInstance instance = BMDModernInstanceBuilder::Build(params);
     if (!m_Impl->InstanceBuffer.UploadAndAttach(mesh->Vao.GetVertexArray(), &instance, 1))
+    {
+        m_Impl->LogDiagnostic(model, command, Impl::DiagnosticInstance, "instance: upload/attribute attach failed");
         return false;
+    }
 
     float projection[16];
     float view[16];
@@ -402,6 +510,7 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
     if (!m_Impl->Bindings.Bind(Bitmaps[command.m_TextureID].TextureNumber,
                                m_Impl->SkeletonTexture))
     {
+        m_Impl->LogDiagnostic(model, command, Impl::DiagnosticBindings, "bindings: material/skeleton texture bind failed");
         glUseProgram(0);
         return false;
     }
@@ -428,7 +537,7 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
 
         char message[320] = { 0 };
         sprintf_s(message,
-                  "complex modern BMD selected: %s (bones=%d, actions=%d, mesh=%d, texture=%d, action=%u, frame=%.3f)",
+                  "complex modern BMD selected: %.31s (bones=%d, actions=%d, mesh=%d, texture=%d, action=%u, frame=%.3f)",
                   model->Name,
                   static_cast<int>(model->NumBones),
                   static_cast<int>(model->NumActions),
@@ -444,7 +553,7 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
         m_Impl->PoseChangeLogged = true;
         char message[256] = { 0 };
         sprintf_s(message,
-                  "animated pose change observed: %s (draw=%llu, action=%u, frame=%.3f)",
+                  "animated pose change observed: %.31s (draw=%llu, action=%u, frame=%.3f)",
                   model->Name,
                   static_cast<unsigned long long>(m_Impl->SuccessfulDraws),
                   static_cast<unsigned int>(model->CurrentAction),
