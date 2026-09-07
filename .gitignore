@@ -1,0 +1,15 @@
+# Arquivos grandes redundantes (já existem extraídos ao lado ou são backup do próprio workspace)
+Shaders e winrar/*.rar
+Shaders e winrar/*.zip
+
+# Repositorio de referencia de terceiros (1,7 GB, tem .git proprio)
+# MuMain Yesid — baixado em 2026-09-06, ver PROGRESS.md
+yesid-bocanegra/
+
+# Caches do Visual Studio (regeneráveis)
+ipch/
+.vs/
+*.suo
+*.opensdf
+*.sdf
+*.VC.db

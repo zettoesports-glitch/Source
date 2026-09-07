@@ -1,0 +1,1 @@
+{"nodes": [{"id": "$graphify-root$_mhp_server_vs_2010_getclientinfo_getclientinfo_resource_h", "label": "resource.h", "file_type": "code", "source_file": "MHP-Server - VS 2010/GetClientInfo/GetClientInfo/resource.h", "source_location": "L1"}], "edges": [], "raw_calls": [], "parse_errors": {"first_error_line": 1, "multiline_error": true}}
