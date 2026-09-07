@@ -32,7 +32,7 @@ if not defined MSBUILD (
 
 echo [1/5] MSBuild: "%MSBUILD%"
 echo [1/5] Building: "%SOLUTION%"
-"%MSBUILD%" "%SOLUTION%" /p:"Configuration=Global Release;Platform=x86" /m /v:m
+"%MSBUILD%" "%SOLUTION%" /p:Configuration="Global Release" /p:Platform=x86 /m /v:m
 if errorlevel 1 (
     echo [ERROR] Build falhou. Cliente nao foi alterado.
     exit /b 3

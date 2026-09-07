@@ -1,5 +1,10 @@
 C:\MUVULKAN\Source\Main\source\Render\Model\BMDModernInstanceBuilder.cpp;C:\MUVULKAN\Source\Main\source\Global Release\BMDModernInstanceBuilder.obj
 C:\MUVULKAN\Source\Main\source\Render\Model\BMDModernMesh.cpp;C:\MUVULKAN\Source\Main\source\Global Release\BMDModernMesh.obj
+C:\MUVULKAN\Source\Main\source\Render\Model\BMDModernObjectGuard.cpp;C:\MUVULKAN\Source\Main\source\Global Release\BMDModernObjectGuard.obj
+C:\MUVULKAN\Source\Main\source\Render\Model\BMDModernRuntime.cpp;C:\MUVULKAN\Source\Main\source\Global Release\BMDModernRuntime.obj
+C:\MUVULKAN\Source\Main\source\Render\Model\BMDModernRuntimeProbe.cpp;C:\MUVULKAN\Source\Main\source\Global Release\BMDModernRuntimeProbe.obj
+C:\MUVULKAN\Source\Main\source\Render\Model\BMDModernSkeletonAtlas.cpp;C:\MUVULKAN\Source\Main\source\Global Release\BMDModernSkeletonAtlas.obj
+C:\MUVULKAN\Source\Main\source\Render\Model\BMDModernSkeletonAtlasTests.cpp;C:\MUVULKAN\Source\Main\source\Global Release\BMDModernSkeletonAtlasTests.obj
 C:\MUVULKAN\Source\Main\source\Render\Model\BMDModernSkeletonPose.cpp;C:\MUVULKAN\Source\Main\source\Global Release\BMDModernSkeletonPose.obj
 C:\MUVULKAN\Source\Main\source\Render\Model\SkeletonBuffer.cpp;C:\MUVULKAN\Source\Main\source\Global Release\SkeletonBuffer.obj
 C:\MUVULKAN\Source\Main\source\Render\Model\SkeletonEncoder.cpp;C:\MUVULKAN\Source\Main\source\Global Release\SkeletonEncoder.obj

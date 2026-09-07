@@ -1,0 +1,10 @@
+[ModernBMD-Probe] build=2026-09-07-atlas-matrix-skeleton-v2
+exe=C:\MUVULKAN\Source\Cliente\Main.exe
+cwd=C:\MUVULKAN\Source\Cliente
+config=C:\MUVULKAN\Source\Cliente\Data\Custom\config.ini exists=1 ExperimentalBMD=1 AtlasMode=1 UseGeneratedShaders=1 MatrixSkeleton=1
+generatedQPSVertex=C:\MUVULKAN\Source\Cliente\Data\Effect\Modern\Generated\models\texture.vs exists=1
+generatedMatrixVertex=C:\MUVULKAN\Source\Cliente\Data\Effect\Modern\Generated\models\texture_matrix.vs exists=1
+generatedPixel=C:\MUVULKAN\Source\Cliente\Data\Effect\Modern\Generated\models\texture.ps exists=1
+experimentalVertex=C:\MUVULKAN\Source\Cliente\Data\Effect\Modern\BMDExperimental.vs exists=1
+experimentalFragment=C:\MUVULKAN\Source\Cliente\Data\Effect\Modern\BMDExperimental.fs exists=1
+renderEntry=0
