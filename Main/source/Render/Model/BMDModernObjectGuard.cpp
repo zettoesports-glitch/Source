@@ -152,13 +152,10 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
         Hero != NULL &&
         object != &Hero->Object;
 
-    // The Dark Raven is a CSPetDarkSpirit OBJECT (KIND_PET / MODEL_DARK_SPIRIT),
-    // not part of the owning Dark Lord's render batch. Its independent pet
-    // animation/effect path is not yet covered by the modern per-instance
-    // composite contract, so keep it entirely on the established legacy path.
-    const bool darkRavenPet =
-        object->Kind == KIND_PET &&
-        object->Type == MODEL_DARK_SPIRIT;
+    // Ordinary map/world objects keep Kind == 0 from OBJECT::Initialize().
+    // Animated scenery is not part of the current character-focused ModernBMD
+    // rollout yet, so keep it on the established legacy transform/render path.
+    const bool worldObject = object->Kind == 0;
 
     // Safe default remains legacy. ForceLegacyRemotePlayers=0 explicitly opens
     // the diagnostic rollout. RemotePlayerClass then allows only one base class
@@ -198,7 +195,7 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
         object->Kind == KIND_NPC ||
         object->Kind == KIND_MONSTER;
 
-    const bool forceLegacy = npcOrMonster || remotePlayerLike || darkRavenPet;
+    const bool forceLegacy = worldObject || npcOrMonster || remotePlayerLike;
 
     if (!forceLegacy)
     {
@@ -231,7 +228,7 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
         return false;
     }
 
-    const char* reason = darkRavenPet ? "dark-raven-pet" : "npc/monster";
+    const char* reason = worldObject ? "world-object" : "npc/monster";
     if (remotePlayerLike)
     {
         if (forceLegacyRemotePlayers)
@@ -242,13 +239,15 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
             reason = "remote-single-object-filter";
     }
 
-    // Log each live OBJECT address once. Besides documenting the temporary
-    // safety quarantine, this gives us concrete per-instance identity and
-    // position data for the shared-BMD transform bug. Include the BMD name so
-    // visual-only legacy regressions (for example one-sided clothing meshes)
-    // can be isolated to the exact asset without broad renderer changes.
+    // Avoid flooding diagnostics with the many one-bone walls/stones in map
+    // object pools. Log animated/skinned world objects, while preserving full
+    // diagnostics for NPC/monster and remote-player quarantine decisions.
+    bool shouldLog = !worldObject;
+    if (worldObject && Models != NULL && object->Type >= 0)
+        shouldLog = Models[object->Type].NumBones > 1;
+
     static std::unordered_set<const OBJECT*> loggedObjects;
-    if (loggedObjects.insert(object).second)
+    if (shouldLog && loggedObjects.insert(object).second)
     {
         std::ofstream logFile("Data\\ModernBMD.log", std::ios::out | std::ios::app);
         if (logFile.is_open())
