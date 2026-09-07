@@ -2,7 +2,43 @@
 
 > **Propósito:** registrar tudo que foi feito, decisões tomadas e pendências,
 > para nunca se perder entre sessões. Toda sessão acrescenta uma entrada aqui.
-> Plano mestre: `MODERNIZATION_PLAN_V2.md` · Auditoria: `LUOIS_RENDERER_AUDIT.md`
+> Plano mestre: `MODERNIZATION_PLAN_V2.md` · Auditoria: `LUOIS_RENDERER_AUDIT.md` · Dependências: `RENDER_DEPENDENCY_MAP.md`
+
+---
+
+## 2026-09-07 — Sessão 2 (FASE 3 concluída)
+
+### FASE 3 — MAPA DE DEPENDÊNCIAS
+
+- [x] `RENDER_DEPENDENCY_MAP.md` criado na branch `modernization`.
+- [x] Pipeline atual documentado: Winmain → CoreGLCompat / CShaderGL / OGL330.
+- [x] Dependências de `CoreGLCompat`, `CShaderGL`, `New_ModelBMD`, `New_RenderBMD`, `BoneManager` e `ZzzBMD` mapeadas.
+- [x] Fluxo BMD → VAO/VBO → shader → draw documentado.
+- [x] Fluxo `OBJECT::BoneTransform` → bone palette → `u_Bones` documentado.
+- [x] Estados `RENDER_*` e dependências de blend/depth/texture/shader/VAO identificados para futura `PipelineState`.
+- [x] Censo dos 61 `glBegin` e áreas consumidoras incorporado ao mapa.
+- [x] Ordem segura de migração definida, preservando `CoreGLCompat` como fallback.
+- [x] Vulkan mantido fora do caminho crítico até a RHI estar estável.
+
+**Commit FASE 3:** `51bf424e9117d3408783d4a30e0b015c7a239ddc`
+
+### Decisão para a FASE 4
+
+Não reescrever o renderer atual. A fundação será adicionada em paralelo:
+
+```text
+RenderTypes
+   ↓
+RenderConfig / RenderStats
+   ↓
+IRenderDevice
+   ↓
+OpenGLRenderDevice
+   ↓
+BindState / ShaderManager / UBO
+```
+
+`CoreGLCompat` continua sendo o caminho de compatibilidade durante a migração.
 
 ---
 
@@ -16,7 +52,7 @@
 - [x] `.gitignore`: exclui `MuGames.rar` (616 MB — backup redundante do próprio
       workspace), zips duplicados dos repos de shader e caches `ipch/`, `.vs/`.
 - [x] Branch `modernization` criada a partir de `main` (estratégia Git da seção 28).
-- [x] **Build original verificado:** `MSBuild Main.sln /p:"Configuration=Global Release;Platform=x86"`
+- [x] **Build original verificado:** `MSBuild Main.sln /p:\"Configuration=Global Release;Platform=x86\"`
       compila **sem erros** (apenas warnings LNK4099 de PDB do cryptlib.lib).
       Saída: `Source/Main/Global Release/Main.exe`. VS instalado:
       `C:\Program Files\Microsoft Visual Studio\18\Community` (toolset v143).
@@ -38,33 +74,16 @@
       `Shaders e winrar/vulkan-main/Shaders` (cloth, common, containers, effects,
       fonts, interface, models, shadows, terrains). Estrutura = a proposta no plano.
 
-**FASE 2 — Auditoria do renderer (iniciada)**
-- [x] `LUOIS_RENDERER_AUDIT.md` **v0.1** criado, cobrindo Winmain/contexto GL,
-      CoreGLCompat, CShaderGL, MU_OpenGL, flag e censo glBegin. Descobertas-chave:
-  1. O cliente **já roda OpenGL 4.6 Core** com a FFP 100% emulada via
-     `CoreGLCompat` (macros interceptam ~57 funções legadas; 1 TU fala com a GL real).
-  2. O caminho moderno OGL330 (CShaderGL + New_ModelBMD/New_RenderBMD) está
-     **dormente**: o flag `jdk_shader_local330` não é definido em lugar nenhum
-     (`#if` indefinido = 0 → código compilado fora).
-  3. O ImmediateRenderer/BindState das FASES 4–5 **já existem como embrião**
-     dentro do CoreGLCompat (batching, VBO streaming 8 MB, cache de estado,
-     emulação de fog/alpha/texenv, ApplyFogUniforms).
-  4. Censo `glBegin`: 61 ocorrências em 13 arquivos (maior: InGameUpdater 25,
-     ZzzLodTerrain 9, ZzzEffectNoUse 8 — este último possivelmente código morto).
-  5. `CShaderGL` já tem UBO (`MeshRenderState`) e construtores de model matrix
-     a partir de matriz 3x4 de bone → semente do GPU Skinning (FASE 7).
+**FASE 2 — Auditoria do renderer**
+- [x] `LUOIS_RENDERER_AUDIT.md` criado.
+- [x] Contexto OpenGL 4.6 Core e emulação FFP via `CoreGLCompat` documentados.
+- [x] OGL330/BMD e GPU skinning auditados.
+- [x] 61 ocorrências reais de `glBegin` catalogadas.
+- [x] `CShaderGL`/UBO e `CoreGLCompat`/batching/cache documentados.
 
-**FASE 1 — Repositórios de shaders (levantado)**
-- [x] Dono confirmou: os shaders OpenGL e Vulkan estão em `Shaders e winrar/`.
-- [x] `SHADER_REPOS_SURVEY.md` criado. Resumo:
-  - `opengl-main/opengl-main/OpenGL`: 176 .vs + 64 .ps, **GLSL decompilado via
-    SPIRV-Cross** (fonte original é HLSL). Tem `GlobalConstants` (std140) com
-    Game3D/Game2D/Shadow/luz/tempo → layout de referência do GlobalUBO.
-  - `vulkan-main/vulkan-main/Shaders`: 45 .vs + 17 .ps + 8 .inc, **HLSL fonte
-    legível**. `common/SkeletonHelpers.inc` = implementação de referência de
-    **GPU skinning por textura de ossos** (`RequestBone`, 2 ossos/vértice,
-    suporte a dual quaternion) — valida a seção 16 do plano.
-  - Implicação: na FASE 7, usar os `.inc` HLSL como fonte da verdade.
+**FASE 1 — Repositórios de shaders**
+- [x] `SHADER_REPOS_SURVEY.md` criado.
+- [x] OpenGL e Vulkan shaders levantados e relação com GlobalUBO/GPU skinning registrada.
 
 ### Decisões registradas
 - `yesid-bocanegra/` fora do git do projeto (referência de terceiros, 1,7 GB).
@@ -72,14 +91,6 @@
 - Arquivos da source em ISO-8859-1 (ex.: `CShaderGL.cpp`): converter com
   `iconv -f ISO-8859-1 -t UTF-8` antes de ler.
 - Build de referência: `Global Release|x86` (a config que gera o cliente).
-
-### Próximos passos (sessão seguinte)
-1. Auditar `New_ModelBMD` + `New_RenderBMD` + `BoneManager` (o caminho dormente →
-   plano de ativação do flag ou absorção sem guard).
-2. Auditar `ZzzBMD` (formato/loader, 3.650 linhas).
-3. Rodar o cliente e registrar FPS base (fechar FASE 0).
-4. FASE 1: extrair lições de `yesid-bocanegra/.../docs/architecture-rendering.md`
-   e cruzar `SkeletonHelpers.inc`/`GlobalConstants` com a Luois.
 
 ---
 
@@ -95,3 +106,4 @@ cd C:\MUVULKAN\Source\Main
 
 - `main` — baseline imutável (commit `3b3abe2`)
 - `modernization` — branch de trabalho atual
+- Último commit da FASE 3: `51bf424e9117d3408783d4a30e0b015c7a239ddc`
