@@ -177,7 +177,7 @@ bool SkeletonEncoder::EncodeQuaternionPositionScale(const float* matrices,
         Vec3 row2{src[8],src[9],src[10]};
         const float sx=Len(row0), sy=Len(row1), sz=Len(row2);
         const float absScale=(sx+sy+sz)/3.0f;
-        const float scaleTolerance = epsilon * std::max(1.0f, absScale);
+        const float scaleTolerance = epsilon * (std::max)(1.0f, absScale);
 
         if (!std::isfinite(absScale) || absScale <= epsilon ||
             std::fabs(sx-absScale)>scaleTolerance ||
@@ -247,8 +247,8 @@ SkeletonEncoder::ValidationResult SkeletonEncoder::ValidateMatrixEncoding(
         Vec3 cpu=TransformPointCpu(m,v);
         Vec3 gpu=ShaderMatrixPoint(encoded.data(),v);
         Vec3 cn=RotateCpu(m,nn), gn=ShaderMatrixNormal(encoded.data(),nn);
-        r.MaxPositionError=std::max(r.MaxPositionError,Len({cpu.x-gpu.x,cpu.y-gpu.y,cpu.z-gpu.z}));
-        r.MaxNormalError=std::max(r.MaxNormalError,Len({cn.x-gn.x,cn.y-gn.y,cn.z-gn.z}));
+        r.MaxPositionError=(std::max)(r.MaxPositionError,Len({cpu.x-gpu.x,cpu.y-gpu.y,cpu.z-gpu.z}));
+        r.MaxNormalError=(std::max)(r.MaxNormalError,Len({cn.x-gn.x,cn.y-gn.y,cn.z-gn.z}));
     }
     r.Success=r.MaxPositionError<=epsilon && r.MaxNormalError<=epsilon;
     return r;
@@ -271,8 +271,8 @@ SkeletonEncoder::ValidationResult SkeletonEncoder::ValidateQuaternionEncoding(
         Vec3 gpu=ShaderQuaternionPoint(q,t,s,v);
         Vec3 cn=RotateCpu(m,nn);
         Vec3 gn=ShaderQuaternionPoint(q,{0,0,0},s,nn);
-        r.MaxPositionError=std::max(r.MaxPositionError,Len({cpu.x-gpu.x,cpu.y-gpu.y,cpu.z-gpu.z}));
-        r.MaxNormalError=std::max(r.MaxNormalError,Len({cn.x-gn.x,cn.y-gn.y,cn.z-gn.z}));
+        r.MaxPositionError=(std::max)(r.MaxPositionError,Len({cpu.x-gpu.x,cpu.y-gpu.y,cpu.z-gpu.z}));
+        r.MaxNormalError=(std::max)(r.MaxNormalError,Len({cn.x-gn.x,cn.y-gn.y,cn.z-gn.z}));
     }
     r.Success=r.MaxPositionError<=epsilon && r.MaxNormalError<=epsilon;
     return r;
