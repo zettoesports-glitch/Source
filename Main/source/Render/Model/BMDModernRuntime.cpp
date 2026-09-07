@@ -54,11 +54,6 @@ namespace
         if (source.empty())
             return source;
 
-        // SPIRV-Cross outputs stored in opengl-main intentionally omit the
-        // version directive. The client owns an OpenGL 4.6 Core context, so
-        // inject the desktop profile header only when the generated file does
-        // not already provide one. Hand-written experimental shaders keep their
-        // own #version line unchanged.
         if (source.find("#version") != std::string::npos)
             return source;
 
@@ -145,9 +140,6 @@ namespace
 
     static void MultiplyColumnMajor4x4(const float* a, const float* b, float* out)
     {
-        // OpenGL matrices returned by glGetFloatv are column-major. This builds
-        // Projection * View, matching the legacy shader expression
-        // gl_Position = uProj * uView * worldPosition.
         for (int column = 0; column < 4; ++column)
         {
             for (int row = 0; row < 4; ++row)
@@ -259,6 +251,7 @@ struct BMDModernRuntime::Impl
     bool Enabled;
     bool AtlasMode;
     bool UseGeneratedShaders;
+    bool MatrixSkeleton;
     bool Diagnostics;
     int DiagnosticLimit;
     int DiagnosticMessages;
@@ -298,6 +291,8 @@ struct BMDModernRuntime::Impl
                                           ".\\Data\\Custom\\config.ini") != 0)
         , UseGeneratedShaders(GetPrivateProfileIntA("ModernRenderer", "UseGeneratedShaders", 1,
                                                      ".\\Data\\Custom\\config.ini") != 0)
+        , MatrixSkeleton(GetPrivateProfileIntA("ModernRenderer", "MatrixSkeleton", 1,
+                                               ".\\Data\\Custom\\config.ini") != 0)
         , Diagnostics(GetPrivateProfileIntA("ModernRenderer", "Diagnostics", 1,
                                             ".\\Data\\Custom\\config.ini") != 0)
         , DiagnosticLimit(GetPrivateProfileIntA("ModernRenderer", "DiagnosticLimit", 24,
@@ -323,7 +318,8 @@ struct BMDModernRuntime::Impl
         , FirstPoseChangeLogged(false)
         , FirstPoseHash(0)
         , SuccessfulDraws(0)
-        , Atlas(SkeletonBuffer::StorageMode::QuaternionPositionScale)
+        , Atlas(MatrixSkeleton ? SkeletonBuffer::StorageMode::Matrix4x4
+                               : SkeletonBuffer::StorageMode::QuaternionPositionScale)
     {
         TargetName[0] = '\0';
         GetPrivateProfileStringA("ModernRenderer", "TargetName", "",
@@ -347,11 +343,12 @@ struct BMDModernRuntime::Impl
 
         if (Enabled)
         {
-            char message[448] = { 0 };
+            char message[512] = { 0 };
             sprintf_s(message,
-                      "ExperimentalBMD=1; atlas runtime enabled (AtlasMode=%d, UseGeneratedShaders=%d, MinBones=%d, MinActions=%d, AtlasMaxPoses=%d, TargetName=%s, Diagnostics=%d)",
+                      "ExperimentalBMD=1; atlas runtime enabled (AtlasMode=%d, UseGeneratedShaders=%d, SkeletonEncoding=%s, MinBones=%d, MinActions=%d, AtlasMaxPoses=%d, TargetName=%s, Diagnostics=%d)",
                       AtlasMode ? 1 : 0,
                       UseGeneratedShaders ? 1 : 0,
+                      MatrixSkeleton ? "Matrix4x4" : "QPS",
                       MinBones,
                       MinActions,
                       MaxAtlasPoses,
@@ -361,11 +358,18 @@ struct BMDModernRuntime::Impl
 
             if (AtlasMode && MinActions > 1)
                 ModernLog("AtlasMode uses captured bone palettes; MinActions is ignored so animated player equipment with one local action can participate");
+            if (MatrixSkeleton)
+                ModernLog("Matrix4x4 skeleton encoding selected for compatibility; QPS remains available with MatrixSkeleton=0");
         }
         else
         {
             ModernLog("ExperimentalBMD=0; legacy renderer only");
         }
+    }
+
+    const char* EncodingName() const
+    {
+        return MatrixSkeleton ? "matrix4x4" : "qps";
     }
 
     bool ConfigureCommonProgram(GLuint candidate)
@@ -381,8 +385,12 @@ struct BMDModernRuntime::Impl
 
     bool TryGeneratedProgram()
     {
+        const char* vertexPath = MatrixSkeleton
+            ? "Data\\Effect\\Modern\\Generated\\models\\texture_matrix.vs"
+            : "Data\\Effect\\Modern\\Generated\\models\\texture.vs";
+
         GLuint candidate = LoadProgram(
-            "Data\\Effect\\Modern\\Generated\\models\\texture.vs",
+            vertexPath,
             "Data\\Effect\\Modern\\Generated\\models\\texture.ps");
         if (candidate == 0)
             return false;
@@ -399,12 +407,22 @@ struct BMDModernRuntime::Impl
         Mode = ProgramMode::Generated;
         ProjectionLocation = -1;
         ViewLocation = -1;
-        ModernLog("generated OpenGL models/texture shader ready (source contract: vulkan-main HLSL -> opengl-main GLSL)");
+
+        char message[256] = { 0 };
+        sprintf_s(message,
+                  "generated OpenGL models/texture shader ready (source contract: vulkan-main HLSL -> opengl-main GLSL, skeleton=%s)",
+                  EncodingName());
+        ModernLog(message);
         return true;
     }
 
     bool TryExperimentalProgram()
     {
+        // BMDExperimental.vs is the original QPS first-light shader. Never pair
+        // it with a Matrix4x4 atlas because its RequestBone() consumes 2 texels.
+        if (MatrixSkeleton)
+            return false;
+
         GLuint candidate = LoadProgram("Data\\Effect\\Modern\\BMDExperimental.vs",
                                        "Data\\Effect\\Modern\\BMDExperimental.fs");
         if (candidate == 0)
@@ -428,7 +446,7 @@ struct BMDModernRuntime::Impl
         Mode = ProgramMode::Experimental;
         ProjectionLocation = projection;
         ViewLocation = view;
-        ModernLog("experimental shader program ready (generated shader fallback)");
+        ModernLog("experimental shader program ready (generated shader fallback, skeleton=qps)");
         return true;
     }
 
@@ -446,13 +464,16 @@ struct BMDModernRuntime::Impl
             if (TryGeneratedProgram())
                 return true;
 
-            ModernLog("generated OpenGL texture shader unavailable/incompatible; trying BMDExperimental fallback");
+            if (MatrixSkeleton)
+                ModernLog("generated Matrix4x4 texture shader unavailable/incompatible; legacy fallback only for modern batch");
+            else
+                ModernLog("generated QPS texture shader unavailable/incompatible; trying BMDExperimental fallback");
         }
 
         if (TryExperimentalProgram())
             return true;
 
-        ModernLog("no modern BMD shader program available; legacy fallback only");
+        ModernLog("no compatible modern BMD shader program available; legacy fallback only");
         Mode = ProgramMode::None;
         Program = 0;
         return false;
@@ -591,7 +612,6 @@ struct BMDModernRuntime::Impl
 
 BMDModernRuntime& BMDModernRuntime::Instance()
 {
-    // Process-lifetime on purpose: do not destroy GL objects after WGL teardown.
     static BMDModernRuntime* instance = new BMDModernRuntime();
     return *instance;
 }
@@ -654,8 +674,13 @@ bool BMDModernRuntime::PrepareBatch(const OGL330MODEL::MeshVAO& commands)
             1.0f);
         if (!submission.Success)
         {
-            m_Impl->LogDiagnostic(model, command, Impl::DiagnosticSkeleton,
-                                  "skeleton: captured palette rejected by QPS encoder");
+            m_Impl->LogDiagnostic(
+                model,
+                command,
+                Impl::DiagnosticSkeleton,
+                m_Impl->MatrixSkeleton
+                    ? "skeleton: captured palette rejected by Matrix4x4 encoder"
+                    : "skeleton: captured palette rejected by QPS encoder");
         }
     }
 
@@ -674,25 +699,28 @@ bool BMDModernRuntime::PrepareBatch(const OGL330MODEL::MeshVAO& commands)
     if (!m_Impl->AtlasUploadLogged)
     {
         m_Impl->AtlasUploadLogged = true;
-        char message[288] = { 0 };
+        char message[320] = { 0 };
         sprintf_s(message,
-                  "skeleton atlas uploaded once for batch: poses=%u bones=%u reused=%u commands=%u shader=%s",
+                  "skeleton atlas uploaded once for batch: poses=%u bones=%u reused=%u commands=%u shader=%s encoding=%s texelsPerBone=%u",
                   stats.PoseCount,
                   stats.BoneCount,
                   stats.ReusedPoseCount,
                   static_cast<unsigned int>(commands.size()),
-                  m_Impl->Mode == Impl::ProgramMode::Generated ? "generated" : "experimental");
+                  m_Impl->Mode == Impl::ProgramMode::Generated ? "generated" : "experimental",
+                  m_Impl->EncodingName(),
+                  m_Impl->Atlas.GetBuffer().GetTexelsPerBone());
         ModernLog(message);
     }
 
     if (!m_Impl->MultiPoseLogged && stats.PoseCount > 1)
     {
         m_Impl->MultiPoseLogged = true;
-        char message[224] = { 0 };
+        char message[256] = { 0 };
         sprintf_s(message,
-                  "multi-pose skeleton atlas observed: poses=%u bones=%u (single BonesTexture upload)",
+                  "multi-pose skeleton atlas observed: poses=%u bones=%u (single BonesTexture upload, encoding=%s)",
                   stats.PoseCount,
-                  stats.BoneCount);
+                  stats.BoneCount,
+                  m_Impl->EncodingName());
         ModernLog(message);
     }
 
@@ -728,10 +756,6 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
     }
 
     BMDModernInstanceParams params;
-
-    // m_BonePalette is already the immutable legacy-final affine palette:
-    // requestScale, BodyScale and BodyOrigin are baked into the 3x4 matrices.
-    // Keep instance transform at identity to avoid applying them twice.
     params.Translate = false;
     params.BodyScale = 1.0f;
     params.NormalOffset = 0.0f;
@@ -818,9 +842,9 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
         if (!m_Impl->AtlasMode)
             m_Impl->SelectedModel = model;
 
-        char message[384] = { 0 };
+        char message[448] = { 0 };
         sprintf_s(message,
-                  "atlas modern BMD selected: %.31s (bones=%u, actions=%d, mesh=%d, texture=%d, BaseBone=%u, action=%u, frame=%.3f, shader=%s)",
+                  "atlas modern BMD selected: %.31s (bones=%u, actions=%d, mesh=%d, texture=%d, BaseBone=%u, action=%u, frame=%.3f, shader=%s, encoding=%s)",
                   model->Name,
                   boneCount,
                   static_cast<int>(model->NumActions),
@@ -829,7 +853,8 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
                   submission->BoneIndex,
                   static_cast<unsigned int>(model->CurrentAction),
                   model->CurrentAnimation,
-                  m_Impl->Mode == Impl::ProgramMode::Generated ? "generated" : "experimental");
+                  m_Impl->Mode == Impl::ProgramMode::Generated ? "generated" : "experimental",
+                  m_Impl->EncodingName());
         ModernLog(message);
     }
     else if (!m_Impl->FirstPoseChangeLogged &&
@@ -837,13 +862,14 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
              m_Impl->FirstPoseHashValid && poseHash != 0 && poseHash != m_Impl->FirstPoseHash)
     {
         m_Impl->FirstPoseChangeLogged = true;
-        char message[288] = { 0 };
+        char message[320] = { 0 };
         sprintf_s(message,
-                  "atlas animated pose change observed: %.31s (draw=%llu, action=%u, frame=%.3f)",
+                  "atlas animated pose change observed: %.31s (draw=%llu, action=%u, frame=%.3f, encoding=%s)",
                   model->Name,
                   static_cast<unsigned long long>(m_Impl->SuccessfulDraws),
                   static_cast<unsigned int>(model->CurrentAction),
-                  model->CurrentAnimation);
+                  model->CurrentAnimation,
+                  m_Impl->EncodingName());
         ModernLog(message);
     }
 
