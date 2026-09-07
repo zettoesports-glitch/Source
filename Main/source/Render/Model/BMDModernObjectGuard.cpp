@@ -18,20 +18,19 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
         Hero != NULL &&
         object != &Hero->Object;
 
-    // Staged rollout: remote players/BotBuffer are now allowed to reach the
-    // modern BMD path so the immutable per-command palette/transform snapshot
-    // can be validated with multiple live OBJECT instances. Keep an emergency
-    // runtime rollback that does not require recompilation. The setting is read
-    // once per client process to avoid profile I/O in the per-object render path.
+    // Remote player/BotBuffer rollout exposed class/equipment deformation on
+    // Elf/BK while a simple SM remained visually correct. Keep remote players
+    // on the known-good legacy renderer by default while the multi-pose atlas
+    // and linked-item transform path are isolated. Set ForceLegacyRemotePlayers=0
+    // explicitly for controlled diagnostics; the setting is read once per client.
     static const bool forceLegacyRemotePlayers =
-        GetPrivateProfileIntA("ModernRenderer", "ForceLegacyRemotePlayers", 0,
+        GetPrivateProfileIntA("ModernRenderer", "ForceLegacyRemotePlayers", 1,
                               ".\\Data\\Custom\\config.ini") != 0;
 
     const bool remotePlayerLike = isRemotePlayerLike && forceLegacyRemotePlayers;
 
     // NPC/monster shared-BMD instances remain quarantined until the remote
-    // player/BotBuffer rollout proves that independent live instances keep
-    // their own pose and transform under the modern batch/atlas path.
+    // player/BotBuffer composite-render path has full per-instance parity.
     const bool npcOrMonster =
         object->Kind == KIND_NPC ||
         object->Kind == KIND_MONSTER;
