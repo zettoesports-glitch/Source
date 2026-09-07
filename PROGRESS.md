@@ -4,6 +4,61 @@
 
 ---
 
+## 2026-09-07 — Sessão 7 (FASE 7 — snapshot imutável de transform por comando)
+
+### Diagnóstico
+
+- [x] Confirmado que `m_BonePalette` já usa `shared_ptr` com copy-on-write quando uma palette anterior está referenciada por comandos pendentes.
+- [x] Localizada a tentativa anterior `8cbc3a99` (`Split modern BMD model transform from captured legacy palette`).
+- [x] Identificada a causa estrutural da instabilidade dessa tentativa: o runtime separava `BodyScale/BodyOrigin` consultando novamente campos mutáveis do `BMD` durante o flush.
+- [x] Confirmado que os campos `m_ModernTranslate`, `m_ModernBodyScale` e `m_ModernBodyOrigin` já existiam em `RenderMeshVAO`, mas ainda não estavam ligados à captura/runtime.
+
+### Correção aplicada
+
+- [x] Commit `9e7b1d92537bf66bfcd4d01c8bb10b7abb8afedf` — `Snapshot modern BMD transform per render command`.
+- [x] `CGMMeshShader::AddBoneTransform()` agora captura `Translate`, `BodyScale` e `BodyOrigin` no mesmo instante em que a bone palette é construída.
+- [x] `CGMMeshShader::AddMeshCommand()` copia esse estado para o `RenderMeshVAO`, tornando o transform usado pelo comando independente de alterações posteriores no BMD compartilhado.
+- [x] O runtime generated-shader reconstrói uma skeleton-only palette usando exclusivamente o snapshot do comando.
+- [x] `TryRender()` envia `BodyScale/BodyOrigin` pelos atributos de instância usando exclusivamente o snapshot do comando.
+- [x] O caminho experimental/fallback não foi alterado pelo transform split.
+- [x] O renderer legado e a `m_BonePalette` original permanecem byte-for-byte no contrato anterior.
+- [x] Guard de segurança continua ativo: NPC, monster, player remoto e BotBuffer permanecem no renderer legado; Hero local continua elegível ao moderno.
+
+### Por que esta versão difere da tentativa revertida
+
+A tentativa anterior fazia:
+
+```text
+captured palette
+      ↓
+flush posterior
+      ↓
+ler BodyScale / BodyOrigin do BMD compartilhado  ← estado podia ter mudado
+```
+
+Agora:
+
+```text
+BoneTransform
+      ↓
+captura palette + transform no mesmo momento
+      ↓
+RenderMeshVAO imutável
+      ↓
+flush / skeleton atlas / instance attributes
+```
+
+### Validação pendente
+
+- [ ] Compilar `Global Release|x86` no ambiente local.
+- [ ] Confirmar no log: `generated-shader transform split uses immutable RenderMeshVAO snapshots`.
+- [ ] Validar Hero parado, andando e mudando animações.
+- [ ] Validar escala, posição, armadura/pele e iluminação do Hero contra o legado.
+- [ ] Manter NPC/monster/player remoto/BotBuffer em quarantine durante esta validação.
+- [ ] Depois do teste do Hero, auditar associação `OBJECT` → transform/palette antes de liberar grupos remotos para o renderer moderno.
+
+---
+
 ## 2026-09-07 — Sessão 6 (FASE 7 — auditoria e correções seguras)
 
 ### Auditoria FASE 1 → FASE 7
@@ -118,4 +173,4 @@ cd C:\MUVULKAN\Source\Main
 - FASE 4: concluída como fundação
 - FASE 5: concluída como camada de conversão
 - FASE 6: ponte concluída; migração física pendente
-- FASE 7: infraestrutura + auditoria + correções seguras; integração física pendente
+- FASE 7: snapshot imutável por comando implementado; build e validação visual pendentes
