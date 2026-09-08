@@ -99,8 +99,12 @@ void CGMShaderBMD::Render(OGL330MODEL::RenderMeshVAO& r)
 
 	// First-light modern path. It is deliberately opt-in and narrow; unsupported
 	// materials or any resource/encoding failure return false and immediately
-	// continue through the unchanged legacy u_Bones renderer below.
-	if (gBMDModernRuntime.IsEnabled() && gBMDModernRuntime.TryRender(r))
+	// continue through the unchanged legacy u_Bones renderer below. During an
+	// isolated remote-player rollout, only the selected OBJECT render scope may
+	// call TryRender; world objects/local Hero continue through this same legacy
+	// shader path without being globally disabled.
+	if (BMDModernAllowModernForCurrentRenderScope() &&
+		gBMDModernRuntime.IsEnabled() && gBMDModernRuntime.TryRender(r))
 	{
 		OGL330MODEL::InvalidateShaderCache();
 		return;
