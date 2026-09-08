@@ -97,14 +97,15 @@ void CGMShaderBMD::Render(OGL330MODEL::RenderMeshVAO& r)
 			DisableDepthTest();
 	}
 
-	// First-light modern path. It is deliberately opt-in and narrow; unsupported
-	// materials or any resource/encoding failure return false and immediately
-	// continue through the unchanged legacy u_Bones renderer below. During an
-	// isolated remote-player rollout, only the selected OBJECT render scope may
-	// call TryRender; world objects/local Hero continue through this same legacy
-	// shader path without being globally disabled.
+	// The full-object coherence guard decides whether this flush owns a prepared
+	// modern atlas. Only attempt a modern draw when that batch was actually
+	// prepared; an intentionally legacy batch must not generate false draw-failure
+	// diagnostics for otherwise compatible commands. Per-command OBJECT ownership
+	// still enforces remote rollout isolation inside the prepared batch.
 	const bool modernAttempt =
-		BMDModernAllowModernForCommand(r.m_Owner) && gBMDModernRuntime.IsEnabled();
+		BMDModernAllowModernForCommand(r.m_Owner) &&
+		gBMDModernRuntime.IsEnabled() &&
+		gBMDModernRuntime.IsBatchPrepared();
 	if (modernAttempt)
 	{
 		if (gBMDModernRuntime.TryRender(r))
