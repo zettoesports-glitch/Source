@@ -10,6 +10,7 @@ public:
     static BMDModernRuntime& Instance();
 
     bool IsEnabled() const;
+    bool IsBatchPrepared() const;
 
     // Material-only compatibility check used by the full-object coherence guard.
     // Keep renderer/material knowledge in one place so adding a new modern pass
