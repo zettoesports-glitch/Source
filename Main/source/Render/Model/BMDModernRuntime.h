@@ -11,6 +11,11 @@ public:
 
     bool IsEnabled() const;
 
+    // Material-only compatibility check used by the full-object coherence guard.
+    // Keep renderer/material knowledge in one place so adding a new modern pass
+    // cannot accidentally leave FlushAllMesh and TryRender with different lists.
+    bool IsMaterialCompatible(const OGL330MODEL::RenderMeshVAO& command) const;
+
     // Pre-stages every eligible immutable command palette into one contiguous
     // skeleton atlas and uploads BonesTexture once for the whole FlushAllMesh().
     // False keeps the entire batch on the unchanged legacy renderer.
