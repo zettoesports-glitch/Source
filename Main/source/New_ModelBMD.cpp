@@ -743,6 +743,7 @@ void CGMMeshShader::AddMeshCommand(BMD* pSrc, int idx, int RFlag, float Alpha, i
 		rNew.m_ModernBodyOrigin.x = m_CurrentModernBodyOrigin.x;
 		rNew.m_ModernBodyOrigin.y = m_CurrentModernBodyOrigin.y;
 		rNew.m_ModernBodyOrigin.z = m_CurrentModernBodyOrigin.z;
+		rNew.m_Owner = BMDModernCurrentRenderScope();
 	}
 }
 

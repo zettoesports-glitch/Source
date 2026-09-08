@@ -718,6 +718,23 @@ bool BMDModernRuntime::PrepareBatch(const OGL330MODEL::MeshVAO& commands)
     {
         const OGL330MODEL::RenderMeshVAO& command = *iter;
         BMD* model = command.m_OldBMD;
+        if (!BMDModernAllowModernForCommand(command.m_Owner))
+        {
+            if (model != NULL && m_Impl->Diagnostics)
+            {
+                static unsigned int ownerSkipLogs = 0;
+                if (ownerSkipLogs < 4u)
+                {
+                    ++ownerSkipLogs;
+                    char message[320] = { 0 };
+                    sprintf_s(message,
+                              "remote-rollout isolation: command owner is not selected remote; leaving legacy model=%.31s",
+                              model->Name);
+                    ModernLog(message);
+                }
+            }
+            continue;
+        }
         if (!m_Impl->IsEligible(command, true))
             continue;
 
@@ -831,7 +848,11 @@ bool BMDModernRuntime::PrepareBatch(const OGL330MODEL::MeshVAO& commands)
 void BMDModernRuntime::FinishBatch()
 {
     if (m_Impl != NULL)
+    {
+        m_Impl->Bindings.Unbind();
+        m_Impl->GlobalConstants.Unbind();
         m_Impl->BatchPrepared = false;
+    }
 }
 
 bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
@@ -848,7 +869,8 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
         return false;
     }
 
-    if (!m_Impl->IsEligible(command, true))
+    if (!BMDModernAllowModernForCommand(command.m_Owner) ||
+        !m_Impl->IsEligible(command, true))
         return false;
 
     BMD* model = command.m_OldBMD;
@@ -937,6 +959,7 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
         m_Impl->LogDiagnostic(model, command, Impl::DiagnosticBindings,
                               "bindings: material/skeleton texture bind failed");
         m_Impl->LogDrawFailure(model, command, "draw: material/skeleton texture bind failed");
+        m_Impl->GlobalConstants.Unbind();
         glUseProgram(0);
         return false;
     }
@@ -948,6 +971,8 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
                             NULL,
                             1);
     glBindVertexArray(0);
+    m_Impl->Bindings.Unbind();
+    m_Impl->GlobalConstants.Unbind();
     glUseProgram(0);
 
     ++m_Impl->SuccessfulDraws;

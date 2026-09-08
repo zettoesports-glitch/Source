@@ -103,7 +103,7 @@ void CGMShaderBMD::Render(OGL330MODEL::RenderMeshVAO& r)
 	// isolated remote-player rollout, only the selected OBJECT render scope may
 	// call TryRender; world objects/local Hero continue through this same legacy
 	// shader path without being globally disabled.
-	if (BMDModernAllowModernForCurrentRenderScope() &&
+	if (BMDModernAllowModernForCommand(r.m_Owner) &&
 		gBMDModernRuntime.IsEnabled() && gBMDModernRuntime.TryRender(r))
 	{
 		OGL330MODEL::InvalidateShaderCache();

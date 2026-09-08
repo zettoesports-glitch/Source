@@ -74,6 +74,13 @@ void OpenGLShaderGlobalConstants::Bind() const
     }
 }
 
+void OpenGLShaderGlobalConstants::Unbind() const
+{
+    glBindBufferBase(GL_UNIFORM_BUFFER,
+                     Render::ShaderGlobalConstantsBinding,
+                     0);
+}
+
 void OpenGLShaderGlobalConstants::Destroy()
 {
     if (m_Buffer != 0)

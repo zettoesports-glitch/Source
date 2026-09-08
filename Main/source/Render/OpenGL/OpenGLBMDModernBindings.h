@@ -13,6 +13,7 @@ public:
     bool ConfigureProgram(unsigned int program);
     bool Bind(unsigned int materialTexture,
               const OpenGLSkeletonTexture& skeletonTexture) const;
+    void Unbind() const;
 
     unsigned int GetProgram() const { return m_Program; }
     bool IsConfigured() const { return m_Program != 0; }

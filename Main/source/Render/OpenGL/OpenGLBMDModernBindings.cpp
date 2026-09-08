@@ -61,3 +61,14 @@ bool OpenGLBMDModernBindings::Bind(
     glActiveTexture(static_cast<GLenum>(previousActiveTexture));
     return true;
 }
+
+void OpenGLBMDModernBindings::Unbind() const
+{
+    GLint previousActiveTexture = GL_TEXTURE0;
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &previousActiveTexture);
+    glActiveTexture(GL_TEXTURE0 + SkeletonTextureUnit);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glActiveTexture(static_cast<GLenum>(previousActiveTexture));
+}

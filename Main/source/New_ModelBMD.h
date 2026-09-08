@@ -23,7 +23,9 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object);
 bool BMDModernIsSelectedRemoteRolloutObject(const OBJECT* object);
 void BMDModernPushRenderScope(const OBJECT* object);
 void BMDModernPopRenderScope();
+const OBJECT* BMDModernCurrentRenderScope();
 bool BMDModernAllowModernForCurrentRenderScope();
+bool BMDModernAllowModernForCommand(const OBJECT* owner);
 
 // Narrow legacy visual workaround for one-sided clothing on merchant_f. These
 // helpers preserve and restore the caller's cull state and are no-ops for every
@@ -89,6 +91,7 @@ namespace OGL330MODEL
 		bool	m_ModernTranslate;
 		float	m_ModernBodyScale;
 		mvec3	m_ModernBodyOrigin;
+		const OBJECT* m_Owner;
 	public:
 		RenderMeshVAO()
 		{
@@ -102,6 +105,7 @@ namespace OGL330MODEL
 			m_ModernTranslate = false;
 			m_ModernBodyScale = 1.f;
 			m_ModernBodyOrigin.x = m_ModernBodyOrigin.y = m_ModernBodyOrigin.z = 0.f;
+			m_Owner = NULL;
 		}
 	};
 	typedef std::vector<RenderMeshVAO> MeshVAO;
@@ -209,6 +213,19 @@ public:
 					shader->FlushAllMesh();
 				OGL330::SetShaderState(false);
 				m_ForcedLegacy = true;
+			}
+		}
+		else if (pObj != NULL)
+		{
+			// Nested Kind==0 world/helper layouts must not append scenery into the
+			// selected remote player's pending batch. Flush the previous OBJECT
+			// first so isolation cannot modern-draw map meshes with the BK pose.
+			const OBJECT* current = BMDModernCurrentRenderScope();
+			if (current != NULL && current != pObj)
+			{
+				OGL330MODEL::CGMMeshShader* shader = OGL330MODEL::CGMMeshShader::Instance();
+				if (shader->HasPendingMeshes())
+					shader->FlushAllMesh();
 			}
 		}
 

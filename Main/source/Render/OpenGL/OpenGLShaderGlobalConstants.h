@@ -15,6 +15,7 @@ public:
     bool ConfigureProgram(unsigned int program) const;
     bool Upload(const Render::ShaderGlobalConstants& constants);
     void Bind() const;
+    void Unbind() const;
     void Destroy();
 
     unsigned int GetBuffer() const { return m_Buffer; }

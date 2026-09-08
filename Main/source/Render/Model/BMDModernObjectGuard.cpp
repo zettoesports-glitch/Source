@@ -148,6 +148,13 @@ void BMDModernPopRenderScope()
         g_RenderScopeStack.pop_back();
 }
 
+const OBJECT* BMDModernCurrentRenderScope()
+{
+    if (g_RenderScopeStack.empty())
+        return NULL;
+    return g_RenderScopeStack.back();
+}
+
 bool BMDModernAllowModernForCurrentRenderScope()
 {
     static const bool remoteRolloutIsolation =
@@ -162,6 +169,20 @@ bool BMDModernAllowModernForCurrentRenderScope()
 
     const OBJECT* current = g_RenderScopeStack.back();
     return BMDModernIsSelectedRemoteRolloutObject(current);
+}
+
+bool BMDModernAllowModernForCommand(const OBJECT* owner)
+{
+    if (!BMDModernAllowModernForCurrentRenderScope())
+        return false;
+
+    static const bool remoteRolloutIsolation =
+        GetPrivateProfileIntA("ModernRenderer", "RemoteRolloutIsolation", 0,
+                              ".\\Data\\Custom\\config.ini") != 0;
+    if (!remoteRolloutIsolation)
+        return true;
+
+    return BMDModernIsSelectedRemoteRolloutObject(owner);
 }
 
 bool BMDModernLegacyCullSuppressed()
