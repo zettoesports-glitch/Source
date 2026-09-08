@@ -801,12 +801,24 @@ struct BMDModernRuntime::Impl
             return false;
         }
 
-        if ((material == MaterialMode::Texture || material == MaterialMode::TextureBright) &&
-            (command.m_meshUV.z != 0.0f || command.m_meshUV.x != 0.0f || command.m_meshUV.y != 0.0f))
+        if (material == MaterialMode::Texture || material == MaterialMode::TextureBright)
         {
-            if (logReason)
-                LogDiagnostic(model, command, DiagnosticMaterial, "material: Blend/stream UV path unsupported");
-            return false;
+            const bool baseUV =
+                command.m_meshUV.x == 0.0f &&
+                command.m_meshUV.y == 0.0f &&
+                command.m_meshUV.z == 0.0f;
+            const bool blendStreamUV =
+                command.m_meshUV.z == 1.0f &&
+                std::isfinite(command.m_meshUV.x) &&
+                std::isfinite(command.m_meshUV.y);
+
+            if (!baseUV && !blendStreamUV)
+            {
+                if (logReason)
+                    LogDiagnostic(model, command, DiagnosticMaterial,
+                                  "material: unsupported Blend/stream UV encoding");
+                return false;
+            }
         }
 
         return true;
@@ -962,7 +974,7 @@ bool BMDModernRuntime::PrepareBatch(const OGL330MODEL::MeshVAO& commands)
         m_Impl->ChromeProgram != 0 && m_Impl->Chrome04Program != 0 && m_Impl->MetalProgram != 0)
     {
         m_Impl->MaterialProgramsLogged = true;
-        ModernLog("material parity rollout active: TEXTURE|BRIGHT (0x42), CHROME|BRIGHT (0x44), METAL|BRIGHT (0x48), CHROME4|BRIGHT (0x1040) use Matrix4x4 ModernBMD programs");
+        ModernLog("material parity rollout active: TEXTURE|BRIGHT (0x42), CHROME|BRIGHT (0x44), METAL|BRIGHT (0x48), CHROME4|BRIGHT (0x1040) use Matrix4x4 ModernBMD programs; texture family accepts base and BlendMesh UV offsets");
     }
 
     if (!m_Impl->AtlasUploadLogged)
