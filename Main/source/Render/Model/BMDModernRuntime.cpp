@@ -393,6 +393,7 @@ struct BMDModernRuntime::Impl
         Texture,
         TextureBright,
         ShadowTexture,
+        Color,
         BrightColor,
         Chrome01,
         Chrome04,
@@ -566,6 +567,8 @@ struct BMDModernRuntime::Impl
 
         // Material overlays remain Matrix4x4-only during this rollout. QPS keeps
         // them on the legacy path so MatrixSkeleton=0 remains a safe rollback.
+        if (MatrixSkeleton && flags == RENDER_COLOR)
+            return MaterialMode::Color;
         if (MatrixSkeleton && flags == RENDER_BRIGHT)
             return MaterialMode::BrightColor;
         if (MatrixSkeleton && flags == (RENDER_CHROME | RENDER_BRIGHT))
@@ -613,6 +616,7 @@ struct BMDModernRuntime::Impl
         case MaterialMode::TextureBright:
             return Program;
         case MaterialMode::ShadowTexture: return ShadowTextureProgram;
+        case MaterialMode::Color:
         case MaterialMode::BrightColor: return ColorProgram;
         case MaterialMode::Chrome01: return ChromeProgram;
         case MaterialMode::Chrome04: return Chrome04Program;
@@ -734,7 +738,7 @@ struct BMDModernRuntime::Impl
         sprintf_s(message,
                   "generated OpenGL model programs ready (texture, texture-bright%s%s%s%s%s%s; source contract: vulkan-main HLSL + legacy VBO shadow projection -> GLSL, skeleton=%s)",
                   MatrixSkeleton ? ", shadow-texture" : "",
-                  MatrixSkeleton ? ", color-bright" : "",
+                  MatrixSkeleton ? ", color, color-bright" : "",
                   MatrixSkeleton ? ", chrome01" : "",
                   MatrixSkeleton ? ", chrome04" : "",
                   MatrixSkeleton ? ", chrome05" : "",
@@ -896,7 +900,7 @@ struct BMDModernRuntime::Impl
             {
                 if (material == MaterialMode::Unsupported)
                     LogDiagnostic(model, command, DiagnosticMaterial,
-                                  "material: unsupported flags (modern parity currently texture/texture-bright + Matrix4x4 shadow-texture/bright-color/Chrome01/Chrome04/Chrome05/Metal bright)");
+                                  "material: unsupported flags (modern parity currently texture/texture-bright + Matrix4x4 shadow-texture/color/bright-color/Chrome01/Chrome04/Chrome05/Metal bright)");
                 else
                     LogDiagnostic(model, command, DiagnosticMaterial,
                                   "material: unsupported Blend/stream UV encoding");
@@ -904,7 +908,9 @@ struct BMDModernRuntime::Impl
             return false;
         }
 
-        if (material != MaterialMode::BrightColor && command.m_TextureID < 0)
+        if (material != MaterialMode::Color &&
+            material != MaterialMode::BrightColor &&
+            command.m_TextureID < 0)
         {
             if (logReason)
                 LogDiagnostic(model, command, DiagnosticBasic, "fallback: invalid texture id");
@@ -1106,7 +1112,7 @@ bool BMDModernRuntime::PrepareBatch(const OGL330MODEL::MeshVAO& commands)
         m_Impl->MetalProgram != 0)
     {
         m_Impl->MaterialProgramsLogged = true;
-        ModernLog("material parity rollout active: SHADOWMAP|TEXTURE (0x22), BRIGHT (0x40), TEXTURE|BRIGHT (0x42), CHROME|BRIGHT (0x44), METAL|BRIGHT (0x48), CHROME4|BRIGHT (0x1040), CHROME5|TEXTURE|BRIGHT (0x4042) use Matrix4x4 ModernBMD programs; texture family accepts base and BlendMesh UV offsets");
+        ModernLog("material parity rollout active: COLOR (0x1), SHADOWMAP|TEXTURE (0x22), BRIGHT (0x40), TEXTURE|BRIGHT (0x42), CHROME|BRIGHT (0x44), METAL|BRIGHT (0x48), CHROME4|BRIGHT (0x1040), CHROME5|TEXTURE|BRIGHT (0x4042) use Matrix4x4 ModernBMD programs; texture family accepts base and BlendMesh UV offsets");
     }
 
     if (!m_Impl->AtlasUploadLogged)
@@ -1219,7 +1225,9 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
     params.NormalOffset = 0.0f;
     params.EnableLight = command.m_isLight;
 
-    const bool samplesMaterialTexture = material != Impl::MaterialMode::BrightColor;
+    const bool samplesMaterialTexture =
+        material != Impl::MaterialMode::Color &&
+        material != Impl::MaterialMode::BrightColor;
     const bool alphaTexture = samplesMaterialTexture && command.m_TextureID >= 0 &&
                               Bitmaps[command.m_TextureID].Components == 4;
     const bool additiveMaterial =
@@ -1336,6 +1344,8 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
             materialName = "texture-bright";
         else if (material == Impl::MaterialMode::ShadowTexture)
             materialName = "shadow-texture";
+        else if (material == Impl::MaterialMode::Color)
+            materialName = "color";
         else if (material == Impl::MaterialMode::BrightColor)
             materialName = "bright-color";
         else if (material == Impl::MaterialMode::Chrome01)
