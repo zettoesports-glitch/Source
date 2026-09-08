@@ -128,6 +128,15 @@ namespace
         return program;
     }
 
+    static void DeleteProgram(GLuint& program)
+    {
+        if (program != 0)
+        {
+            glDeleteProgram(program);
+            program = 0;
+        }
+    }
+
     static void SetIdentity(float* matrix)
     {
         if (matrix == NULL)
@@ -154,6 +163,21 @@ namespace
         }
     }
 
+    static int MaterialFlagsWithoutDepth(const OGL330MODEL::RenderMeshVAO& command)
+    {
+        return command.m_FlagRender & ~RENDER_NODEPTH;
+    }
+
+    static bool IsChrome01Material(const OGL330MODEL::RenderMeshVAO& command)
+    {
+        return MaterialFlagsWithoutDepth(command) == (RENDER_CHROME | RENDER_BRIGHT);
+    }
+
+    static bool IsMetalMaterial(const OGL330MODEL::RenderMeshVAO& command)
+    {
+        return MaterialFlagsWithoutDepth(command) == (RENDER_METAL | RENDER_BRIGHT);
+    }
+
     static void BuildGeneratedGlobals(const OGL330MODEL::RenderMeshVAO& command,
                                       const float* projection,
                                       const float* view,
@@ -170,6 +194,15 @@ namespace
         constants.LightPosition[1] = command.m_lightPosition.y;
         constants.LightPosition[2] = command.m_lightPosition.z;
         constants.WorldTime = static_cast<float>(WorldTime);
+
+        // Chrome01's reference HLSL consumes Wave.x. The legacy Core shader
+        // already captured the exact phase in m_setting1.z, so use that immutable
+        // command value instead of recomputing time during a delayed flush.
+        if (IsChrome01Material(command))
+        {
+            constants.Wave[0] = command.m_setting1.z;
+            constants.Wave[1] = command.m_setting1.z * 2.0f;
+        }
     }
 
     static std::uint64_t HashSkeletonPose(const float* matrices, std::uint32_t boneCount)
@@ -295,6 +328,14 @@ struct BMDModernRuntime::Impl
         Experimental
     };
 
+    enum class MaterialMode
+    {
+        Unsupported,
+        Texture,
+        Chrome01,
+        Metal
+    };
+
     bool Enabled;
     bool AtlasMode;
     bool UseGeneratedShaders;
@@ -311,6 +352,8 @@ struct BMDModernRuntime::Impl
 
     bool ProgramAttempted;
     GLuint Program;
+    GLuint ChromeProgram;
+    GLuint MetalProgram;
     ProgramMode Mode;
     GLint ProjectionLocation;
     GLint ViewLocation;
@@ -319,6 +362,7 @@ struct BMDModernRuntime::Impl
     bool AtlasUploadLogged;
     bool MultiPoseLogged;
     bool TransformSnapshotLogged;
+    bool MaterialProgramsLogged;
     BMD* SelectedModel;
     BMD* FirstModernModel;
     bool FirstPoseHashValid;
@@ -357,6 +401,8 @@ struct BMDModernRuntime::Impl
                                               ".\\Data\\Custom\\config.ini"))
         , ProgramAttempted(false)
         , Program(0)
+        , ChromeProgram(0)
+        , MetalProgram(0)
         , Mode(ProgramMode::None)
         , ProjectionLocation(-1)
         , ViewLocation(-1)
@@ -364,6 +410,7 @@ struct BMDModernRuntime::Impl
         , AtlasUploadLogged(false)
         , MultiPoseLogged(false)
         , TransformSnapshotLogged(false)
+        , MaterialProgramsLogged(false)
         , SelectedModel(NULL)
         , FirstModernModel(NULL)
         , FirstPoseHashValid(false)
@@ -419,9 +466,45 @@ struct BMDModernRuntime::Impl
         }
     }
 
+    ~Impl()
+    {
+        DeleteProgram(MetalProgram);
+        DeleteProgram(ChromeProgram);
+        DeleteProgram(Program);
+    }
+
     const char* EncodingName() const
     {
         return MatrixSkeleton ? "matrix4x4" : "qps";
+    }
+
+    MaterialMode ClassifyMaterial(const OGL330MODEL::RenderMeshVAO& command) const
+    {
+        const int flags = MaterialFlagsWithoutDepth(command);
+        if (flags == RENDER_TEXTURE)
+            return MaterialMode::Texture;
+
+        // The first material-parity rollout is intentionally Matrix4x4-only.
+        // QPS keeps these overlays on the legacy path until matching runtime
+        // copies are deployed, so switching MatrixSkeleton=0 remains a safe
+        // rollback rather than producing a mixed modern/legacy surface.
+        if (MatrixSkeleton && flags == (RENDER_CHROME | RENDER_BRIGHT))
+            return MaterialMode::Chrome01;
+        if (MatrixSkeleton && flags == (RENDER_METAL | RENDER_BRIGHT))
+            return MaterialMode::Metal;
+
+        return MaterialMode::Unsupported;
+    }
+
+    GLuint ProgramForMaterial(MaterialMode material) const
+    {
+        switch (material)
+        {
+        case MaterialMode::Texture: return Program;
+        case MaterialMode::Chrome01: return ChromeProgram;
+        case MaterialMode::Metal: return MetalProgram;
+        default: return 0;
+        }
     }
 
     bool ConfigureCommonProgram(GLuint candidate)
@@ -435,34 +518,74 @@ struct BMDModernRuntime::Impl
         return true;
     }
 
+    bool ConfigureGeneratedProgram(GLuint candidate)
+    {
+        if (!ConfigureCommonProgram(candidate))
+            return false;
+        if (!GlobalConstants.ConfigureProgram(candidate))
+            return false;
+        return true;
+    }
+
     bool TryGeneratedProgram()
     {
         const char* vertexPath = MatrixSkeleton
             ? "Data\\Effect\\Modern\\Generated\\models\\texture_matrix.vs"
             : "Data\\Effect\\Modern\\Generated\\models\\texture.vs";
+        const char* fragmentPath = "Data\\Effect\\Modern\\Generated\\models\\texture.ps";
 
-        GLuint candidate = LoadProgram(
-            vertexPath,
-            "Data\\Effect\\Modern\\Generated\\models\\texture.ps");
-        if (candidate == 0)
+        GLuint textureCandidate = LoadProgram(vertexPath, fragmentPath);
+        if (textureCandidate == 0)
             return false;
 
-        if (!ConfigureCommonProgram(candidate) ||
-            !GlobalConstants.Initialize() ||
-            !GlobalConstants.ConfigureProgram(candidate))
+        GLuint chromeCandidate = 0;
+        GLuint metalCandidate = 0;
+        if (MatrixSkeleton)
         {
-            glDeleteProgram(candidate);
+            chromeCandidate = LoadProgram(
+                "Data\\Effect\\Modern\\Generated\\models\\chrome01_matrix.vs",
+                fragmentPath);
+            metalCandidate = LoadProgram(
+                "Data\\Effect\\Modern\\Generated\\models\\metal_matrix.vs",
+                fragmentPath);
+
+            if (chromeCandidate == 0 || metalCandidate == 0)
+            {
+                DeleteProgram(metalCandidate);
+                DeleteProgram(chromeCandidate);
+                DeleteProgram(textureCandidate);
+                ModernLog("generated Matrix4x4 Chrome01/Metal material program unavailable; keeping complete modern batch on legacy renderer");
+                return false;
+            }
+        }
+
+        if (!GlobalConstants.Initialize() ||
+            !ConfigureGeneratedProgram(textureCandidate) ||
+            (MatrixSkeleton && !ConfigureGeneratedProgram(chromeCandidate)) ||
+            (MatrixSkeleton && !ConfigureGeneratedProgram(metalCandidate)))
+        {
+            DeleteProgram(metalCandidate);
+            DeleteProgram(chromeCandidate);
+            DeleteProgram(textureCandidate);
             return false;
         }
 
-        Program = candidate;
+        Program = textureCandidate;
+        ChromeProgram = chromeCandidate;
+        MetalProgram = metalCandidate;
         Mode = ProgramMode::Generated;
         ProjectionLocation = -1;
         ViewLocation = -1;
 
-        char message[256] = { 0 };
+        // Leave the binding helper configured for the base program. It will be
+        // switched only when a Chrome/Metal draw actually occurs.
+        Bindings.ConfigureProgram(Program);
+
+        char message[320] = { 0 };
         sprintf_s(message,
-                  "generated OpenGL models/texture shader ready (source contract: vulkan-main HLSL -> opengl-main GLSL, skeleton=%s)",
+                  "generated OpenGL model programs ready (texture%s%s; source contract: vulkan-main HLSL -> GLSL, skeleton=%s)",
+                  MatrixSkeleton ? ", chrome01" : "",
+                  MatrixSkeleton ? ", metal" : "",
                   EncodingName());
         ModernLog(message);
         return true;
@@ -495,6 +618,8 @@ struct BMDModernRuntime::Impl
         }
 
         Program = candidate;
+        ChromeProgram = 0;
+        MetalProgram = 0;
         Mode = ProgramMode::Experimental;
         ProjectionLocation = projection;
         ViewLocation = view;
@@ -517,7 +642,7 @@ struct BMDModernRuntime::Impl
                 return true;
 
             if (MatrixSkeleton)
-                ModernLog("generated Matrix4x4 texture shader unavailable/incompatible; legacy fallback only for modern batch");
+                ModernLog("generated Matrix4x4 model shader set unavailable/incompatible; legacy fallback only for modern batch");
             else
                 ModernLog("generated QPS texture shader unavailable/incompatible; trying BMDExperimental fallback");
         }
@@ -528,6 +653,8 @@ struct BMDModernRuntime::Impl
         ModernLog("no compatible modern BMD shader program available; legacy fallback only");
         Mode = ProgramMode::None;
         Program = 0;
+        ChromeProgram = 0;
+        MetalProgram = 0;
         return false;
     }
 
@@ -632,22 +759,17 @@ struct BMDModernRuntime::Impl
         if (!AtlasMode && SelectedModel != NULL && SelectedModel != model)
             return false;
 
-        const int allowedFlags = RENDER_TEXTURE | RENDER_NODEPTH;
-        if ((command.m_FlagRender & RENDER_TEXTURE) == 0)
+        const MaterialMode material = ClassifyMaterial(command);
+        if (material == MaterialMode::Unsupported)
         {
             if (logReason)
-                LogDiagnostic(model, command, DiagnosticMaterial, "material: not RENDER_TEXTURE");
+                LogDiagnostic(model, command, DiagnosticMaterial,
+                              "material: unsupported flags (modern parity currently texture + Matrix4x4 Chrome01/Metal bright)");
             return false;
         }
 
-        if ((command.m_FlagRender & ~allowedFlags) != 0)
-        {
-            if (logReason)
-                LogDiagnostic(model, command, DiagnosticMaterial, "material: unsupported render flags");
-            return false;
-        }
-
-        if (command.m_meshUV.z != 0.0f || command.m_meshUV.x != 0.0f || command.m_meshUV.y != 0.0f)
+        if (material == MaterialMode::Texture &&
+            (command.m_meshUV.z != 0.0f || command.m_meshUV.x != 0.0f || command.m_meshUV.y != 0.0f))
         {
             if (logReason)
                 LogDiagnostic(model, command, DiagnosticMaterial, "material: Blend/stream UV path unsupported");
@@ -803,6 +925,13 @@ bool BMDModernRuntime::PrepareBatch(const OGL330MODEL::MeshVAO& commands)
         ModernLog("generated-shader transform split uses immutable RenderMeshVAO snapshots; mutable BMD BodyScale/BodyOrigin are not read during flush");
     }
 
+    if (!m_Impl->MaterialProgramsLogged && m_Impl->MatrixSkeleton &&
+        m_Impl->ChromeProgram != 0 && m_Impl->MetalProgram != 0)
+    {
+        m_Impl->MaterialProgramsLogged = true;
+        ModernLog("material parity rollout active: RENDER_CHROME|RENDER_BRIGHT (0x44) and RENDER_METAL|RENDER_BRIGHT (0x48) use Matrix4x4 ModernBMD programs");
+    }
+
     if (!m_Impl->AtlasUploadLogged)
     {
         m_Impl->AtlasUploadLogged = true;
@@ -860,18 +989,30 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
     if (m_Impl == NULL || !m_Impl->Enabled)
         return false;
 
+    // Test immutable owner/material eligibility first. Unsupported legacy
+    // overlays should silently use the legacy renderer and must not consume the
+    // draw-failure budget merely because this batch was intentionally skipped.
+    if (!BMDModernAllowModernForCommand(command.m_Owner) ||
+        !m_Impl->IsEligible(command, true))
+        return false;
+
     if (!m_Impl->BatchPrepared || m_Impl->Program == 0)
     {
         m_Impl->LogDrawFailure(command.m_OldBMD, command,
                                !m_Impl->BatchPrepared
-                                   ? "draw: batch not prepared (coherence, empty atlas, or isolation skipped PrepareBatch)"
+                                   ? "draw: batch not prepared (coherence, empty atlas, or PrepareBatch failure)"
                                    : "draw: modern shader program unavailable");
         return false;
     }
 
-    if (!BMDModernAllowModernForCommand(command.m_Owner) ||
-        !m_Impl->IsEligible(command, true))
+    const Impl::MaterialMode material = m_Impl->ClassifyMaterial(command);
+    const GLuint drawProgram = m_Impl->ProgramForMaterial(material);
+    if (drawProgram == 0)
+    {
+        m_Impl->LogDrawFailure(command.m_OldBMD, command,
+                               "draw: material-specific modern shader unavailable");
         return false;
+    }
 
     BMD* model = command.m_OldBMD;
     const void* poseKey = command.m_BonePalette.get();
@@ -902,7 +1043,11 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
     params.EnableLight = command.m_isLight;
 
     const bool alphaTexture = Bitmaps[command.m_TextureID].Components == 4;
-    params.MinAlpha = (command.m_isAlpha < 0.99f || alphaTexture) ? 0.25f : 0.0f;
+    const bool additiveMaterial =
+        (command.m_FlagRender & (RENDER_BRIGHT | RENDER_DARK | RENDER_LIGHTMAP)) != 0;
+    params.MinAlpha = (!additiveMaterial && (command.m_isAlpha < 0.99f || alphaTexture))
+        ? 0.25f
+        : 0.0f;
     params.BlendUV[0] = 0.0f;
     params.BlendUV[1] = 0.0f;
     params.EnableShadow = false;
@@ -931,7 +1076,24 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
     glGetFloatv(GL_PROJECTION_MATRIX, projection);
     glGetFloatv(GL_MODELVIEW_MATRIX, view);
 
-    glUseProgram(m_Impl->Program);
+    // OpenGLBMDModernBindings stores sampler locations for one linked program.
+    // Reconfigure only on a material-program transition, preserving the cheap
+    // base-texture path for repeated meshes.
+    if (m_Impl->Bindings.GetProgram() != drawProgram &&
+        !m_Impl->Bindings.ConfigureProgram(drawProgram))
+    {
+        m_Impl->LogDiagnostic(model, command, Impl::DiagnosticBindings,
+                              "bindings: material program sampler configuration failed");
+        m_Impl->LogDrawFailure(model, command,
+                               "draw: material program sampler configuration failed");
+        return false;
+    }
+
+    GLint previousProgram = 0;
+    GLint previousVertexArray = 0;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &previousProgram);
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &previousVertexArray);
+    glUseProgram(drawProgram);
 
     if (m_Impl->Mode == Impl::ProgramMode::Generated)
     {
@@ -942,7 +1104,7 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
             m_Impl->LogDiagnostic(model, command, Impl::DiagnosticGlobals,
                                   "globals: GlobalConstants upload failed");
             m_Impl->LogDrawFailure(model, command, "draw: GlobalConstants upload failed");
-            glUseProgram(0);
+            glUseProgram(static_cast<GLuint>(previousProgram));
             return false;
         }
         m_Impl->GlobalConstants.Bind();
@@ -960,7 +1122,7 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
                               "bindings: material/skeleton texture bind failed");
         m_Impl->LogDrawFailure(model, command, "draw: material/skeleton texture bind failed");
         m_Impl->GlobalConstants.Unbind();
-        glUseProgram(0);
+        glUseProgram(static_cast<GLuint>(previousProgram));
         return false;
     }
 
@@ -970,10 +1132,10 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
                             GL_UNSIGNED_INT,
                             NULL,
                             1);
-    glBindVertexArray(0);
+    glBindVertexArray(static_cast<GLuint>(previousVertexArray));
     m_Impl->Bindings.Unbind();
     m_Impl->GlobalConstants.Unbind();
-    glUseProgram(0);
+    glUseProgram(static_cast<GLuint>(previousProgram));
 
     ++m_Impl->SuccessfulDraws;
 
@@ -988,9 +1150,15 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
         if (!m_Impl->AtlasMode)
             m_Impl->SelectedModel = model;
 
-        char message[512] = { 0 };
+        const char* materialName = "texture";
+        if (material == Impl::MaterialMode::Chrome01)
+            materialName = "chrome01";
+        else if (material == Impl::MaterialMode::Metal)
+            materialName = "metal";
+
+        char message[560] = { 0 };
         sprintf_s(message,
-                  "atlas modern BMD selected: %.31s (bones=%u, actions=%d, mesh=%d, texture=%d, BaseBone=%u, action=%u, frame=%.3f, shader=%s, encoding=%s, translate=%d, bodyScale=%.3f)",
+                  "atlas modern BMD selected: %.31s (bones=%u, actions=%d, mesh=%d, texture=%d, BaseBone=%u, action=%u, frame=%.3f, shader=%s, material=%s, encoding=%s, translate=%d, bodyScale=%.3f)",
                   model->Name,
                   boneCount,
                   static_cast<int>(model->NumActions),
@@ -1000,6 +1168,7 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
                   static_cast<unsigned int>(model->CurrentAction),
                   model->CurrentAnimation,
                   m_Impl->Mode == Impl::ProgramMode::Generated ? "generated" : "experimental",
+                  materialName,
                   m_Impl->EncodingName(),
                   params.Translate ? 1 : 0,
                   params.BodyScale);
