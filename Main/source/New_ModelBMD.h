@@ -17,6 +17,12 @@ namespace OGL330
 // parity. Implemented in Render/Model/BMDModernObjectGuard.cpp.
 bool BMDModernShouldForceLegacyObject(const OBJECT* object);
 
+// Returns true only for the single remote-player OBJECT selected by the current
+// diagnostic rollout guard. Used to tag immutable render commands so a rollout
+// can be isolated without forcing unrelated world objects out of the legacy
+// shader path.
+bool BMDModernIsSelectedRemoteRolloutObject(const OBJECT* object);
+
 // Narrow legacy visual workaround for one-sided clothing on merchant_f. These
 // helpers preserve and restore the caller's cull state and are no-ops for every
 // other object/model.
@@ -73,6 +79,12 @@ namespace OGL330MODEL
 		mvec4   m_lightPosition;
 		std::shared_ptr<std::vector<float> > m_BonePalette;
 
+		// Immutable render-owner snapshot. This is deliberately separate from the
+		// BMD pointer because body parts/equipment use different BMD assets while
+		// still belonging to one CHARACTER/OBJECT render scope.
+		const OBJECT* m_TargetObject;
+		bool	m_RemoteRolloutTarget;
+
 		// Immutable transform snapshot for the modern generated-shader path.
 		// m_BonePalette stays byte-for-byte compatible with the legacy u_Bones
 		// renderer; the modern runtime removes these baked model transforms from
@@ -91,6 +103,8 @@ namespace OGL330MODEL
 			m_Shader = -1;
 			m_isAlpha = 1.f;
 			m_isColor.x = m_isColor.y = m_isColor.z = 1.f;
+			m_TargetObject = NULL;
+			m_RemoteRolloutTarget = false;
 			m_ModernTranslate = false;
 			m_ModernBodyScale = 1.f;
 			m_ModernBodyOrigin.x = m_ModernBodyOrigin.y = m_ModernBodyOrigin.z = 0.f;
