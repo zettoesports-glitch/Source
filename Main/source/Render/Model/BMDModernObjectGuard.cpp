@@ -74,6 +74,21 @@ namespace
         // so the workaround remains isolated if enum values move.
         return std::strstr(modelName, "merchant_f") != NULL;
     }
+
+    bool IsSos3Bi01LegacyWorldAsset(const OBJECT* object)
+    {
+        if (object == NULL || object->Kind != 0 || Models == NULL || object->Type < 0)
+            return false;
+
+        const char* modelName = Models[object->Type].Name;
+        if (modelName == NULL || modelName[0] == '\0')
+            return false;
+
+        // This animated world asset is the one currently producing exploded
+        // geometry on the ModernBMD path. Keep only this exact asset on legacy;
+        // Kind == 0 is also used by weapons, skills and helper objects.
+        return std::strstr(modelName, "Object52\\sos3bi01.smd") != NULL;
+    }
 }
 
 bool BMDModernLegacyCullSuppressed()
@@ -152,6 +167,8 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
         Hero != NULL &&
         object != &Hero->Object;
 
+    const bool legacySos3Bi01WorldAsset = IsSos3Bi01LegacyWorldAsset(object);
+
     // Safe default remains legacy. ForceLegacyRemotePlayers=0 explicitly opens
     // the diagnostic rollout. RemotePlayerClass then allows only one base class
     // (-1 = any; 0 wizard, 1 knight/BK, 2 elf), and RemotePlayerSingleObject=1
@@ -190,7 +207,7 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
         object->Kind == KIND_NPC ||
         object->Kind == KIND_MONSTER;
 
-    const bool forceLegacy = npcOrMonster || remotePlayerLike;
+    const bool forceLegacy = legacySos3Bi01WorldAsset || npcOrMonster || remotePlayerLike;
 
     if (!forceLegacy)
     {
@@ -223,7 +240,7 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
         return false;
     }
 
-    const char* reason = "npc/monster";
+    const char* reason = legacySos3Bi01WorldAsset ? "world-asset-sos3bi01" : "npc/monster";
     if (remotePlayerLike)
     {
         if (forceLegacyRemotePlayers)
