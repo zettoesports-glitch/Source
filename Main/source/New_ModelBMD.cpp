@@ -782,8 +782,8 @@ void CGMMeshShader::FlushAllMesh()
 	OGL330MODEL::BeginUniformBatch();
 
 	// Keep the full object flush on one renderer whenever an unsupported overlay
-	// remains. The first parity pack intentionally admits only base texture plus
-	// Matrix4x4 Chrome01/Metal bright passes; every other material still forces
+	// remains. The current parity pack admits base/bright texture plus Matrix4x4
+	// Chrome01, Chrome4 and Metal bright passes. Every other material still forces
 	// the complete flush through legacy to avoid mixed-depth flashing.
 	static const bool matrixSkeleton =
 		GetPrivateProfileIntA("ModernRenderer", "MatrixSkeleton", 1,
@@ -801,19 +801,23 @@ void CGMMeshShader::FlushAllMesh()
 			modernScopeAllowed = false;
 
 		const int flagsNoDepth = command.m_FlagRender & ~RENDER_NODEPTH;
-		const bool baseTexture =
-			flagsNoDepth == RENDER_TEXTURE &&
+		const bool textureFamily =
+			(flagsNoDepth == RENDER_TEXTURE ||
+			 flagsNoDepth == (RENDER_TEXTURE | RENDER_BRIGHT)) &&
 			command.m_meshUV.x == 0.0f &&
 			command.m_meshUV.y == 0.0f &&
 			command.m_meshUV.z == 0.0f;
 		const bool chromeBright =
 			matrixSkeleton &&
 			flagsNoDepth == (RENDER_CHROME | RENDER_BRIGHT);
+		const bool chrome4Bright =
+			matrixSkeleton &&
+			flagsNoDepth == (RENDER_CHROME4 | RENDER_BRIGHT);
 		const bool metalBright =
 			matrixSkeleton &&
 			flagsNoDepth == (RENDER_METAL | RENDER_BRIGHT);
 
-		if (!baseTexture && !chromeBright && !metalBright)
+		if (!textureFamily && !chromeBright && !chrome4Bright && !metalBright)
 		{
 			modernBatchCompatible = false;
 			break;
@@ -853,7 +857,7 @@ void CGMMeshShader::FlushAllMesh()
 			coherenceGuardLogged = true;
 			std::ofstream logFile("Data\\ModernBMD.log", std::ios::out | std::ios::app);
 			if (logFile.is_open())
-				logFile << "[ModernBMD] material coherence guard active: unsupported overlay/pass remains; modern parity currently texture + Matrix4x4 Chrome01/Metal bright, so complete flush stays legacy\n";
+				logFile << "[ModernBMD] material coherence guard active: unsupported overlay/pass remains; modern parity currently texture/bright + Matrix4x4 Chrome01/Chrome4/Metal bright, so complete flush stays legacy\n";
 		}
 	}
 	else if (gBMDModernRuntime.IsEnabled() && modernBatchCompatible && !modernScopeAllowed)
