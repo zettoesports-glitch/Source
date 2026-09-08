@@ -20,6 +20,44 @@ namespace
     const OBJECT* g_SelectedRemoteObject = NULL;
     std::vector<const OBJECT*> g_RenderScopeStack;
 
+    struct ObjectLogKey
+    {
+        const OBJECT* Address;
+        int Kind;
+        int Type;
+        int BaseClass;
+
+        bool operator==(const ObjectLogKey& other) const
+        {
+            return Address == other.Address &&
+                   Kind == other.Kind &&
+                   Type == other.Type &&
+                   BaseClass == other.BaseClass;
+        }
+    };
+
+    struct ObjectLogKeyHash
+    {
+        size_t operator()(const ObjectLogKey& key) const
+        {
+            size_t value = reinterpret_cast<size_t>(key.Address);
+            value ^= static_cast<size_t>(key.Kind + 17) * static_cast<size_t>(2654435761u);
+            value ^= static_cast<size_t>(key.Type + 257) * static_cast<size_t>(2246822519u);
+            value ^= static_cast<size_t>(key.BaseClass + 37) * static_cast<size_t>(3266489917u);
+            return value;
+        }
+    };
+
+    ObjectLogKey MakeObjectLogKey(const OBJECT* object, int baseClass)
+    {
+        ObjectLogKey key;
+        key.Address = object;
+        key.Kind = object != NULL ? static_cast<int>(object->Kind) : -1;
+        key.Type = object != NULL ? object->Type : -1;
+        key.BaseClass = baseClass;
+        return key;
+    }
+
     bool IsRemotePlayerLikeObject(const OBJECT* object)
     {
         return object != NULL &&
@@ -355,9 +393,10 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
     {
         if (isRemotePlayerLike)
         {
-            static std::unordered_set<const OBJECT*> loggedModernRemoteObjects;
-            if (loggedModernRemoteObjects.size() < 16u &&
-                loggedModernRemoteObjects.insert(object).second)
+            static std::unordered_set<ObjectLogKey, ObjectLogKeyHash> loggedModernRemoteObjects;
+            const ObjectLogKey key = MakeObjectLogKey(object, remoteBaseClass);
+            if (loggedModernRemoteObjects.size() < 32u &&
+                loggedModernRemoteObjects.insert(key).second)
             {
                 std::ofstream logFile("Data\\ModernBMD.log", std::ios::out | std::ios::app);
                 if (logFile.is_open())
@@ -394,13 +433,13 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
             reason = "remote-single-object-filter";
     }
 
-    // Log each live OBJECT address once. Besides documenting the temporary
-    // safety quarantine, this gives us concrete per-instance identity and
-    // position data for the shared-BMD transform bug. Include the BMD name so
-    // visual-only legacy regressions (for example one-sided clothing meshes)
-    // can be isolated to the exact asset without broad renderer changes.
-    static std::unordered_set<const OBJECT*> loggedObjects;
-    if (loggedObjects.insert(object).second)
+    // OBJECT slots are reused by the client. Key diagnostics by the observed
+    // address + kind/type/class signature rather than by address alone, otherwise
+    // an NPC logged from a slot can hide a later player (or another model) that
+    // reuses that same OBJECT storage during the same validation session.
+    static std::unordered_set<ObjectLogKey, ObjectLogKeyHash> loggedObjects;
+    const ObjectLogKey key = MakeObjectLogKey(object, isRemotePlayerLike ? remoteBaseClass : -1);
+    if (loggedObjects.insert(key).second)
     {
         std::ofstream logFile("Data\\ModernBMD.log", std::ios::out | std::ios::app);
         if (logFile.is_open())
