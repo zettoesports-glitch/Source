@@ -781,22 +781,39 @@ void CGMMeshShader::FlushAllMesh()
 
 	OGL330MODEL::BeginUniformBatch();
 
-	// Do not mix the modern base-texture pass with legacy surface overlays on
-	// the same object. Chrome/Metal/Oil/bright passes redraw the same skinned
-	// surface and depend on depth matching the base pass exactly. Until those
-	// materials are migrated to the modern dispatcher, keep the whole object on
-	// the legacy renderer to avoid frame-to-frame z fighting / flashing.
+	// Keep the full object flush on one renderer whenever an unsupported overlay
+	// remains. The first parity pack intentionally admits only base texture plus
+	// Matrix4x4 Chrome01/Metal bright passes; every other material still forces
+	// the complete flush through legacy to avoid mixed-depth flashing.
+	static const bool matrixSkeleton =
+		GetPrivateProfileIntA("ModernRenderer", "MatrixSkeleton", 1,
+			".\\Data\\Custom\\config.ini") != 0;
+
 	bool modernBatchCompatible = true;
+	bool modernScopeAllowed = true;
 	for (MeshVAO::const_iterator iter = m_Data.begin(); iter != m_Data.end(); ++iter)
 	{
 		const RenderMeshVAO& command = *iter;
-		const int flags = command.m_FlagRender;
-		const int supportedFlags = RENDER_TEXTURE | RENDER_NODEPTH;
-		const bool baseTexture = (flags & RENDER_TEXTURE) == RENDER_TEXTURE;
-		const bool supportedBase = baseTexture && ((flags & ~supportedFlags) == 0) &&
-			command.m_meshUV.x == 0.0f && command.m_meshUV.y == 0.0f && command.m_meshUV.z == 0.0f;
 
-		if (!supportedBase)
+		// Commands own their render identity at record time. Do not consult the
+		// mutable scope stack here: FlushAllMesh may run after nested layouts pop.
+		if (!BMDModernAllowModernForCommand(command.m_Owner))
+			modernScopeAllowed = false;
+
+		const int flagsNoDepth = command.m_FlagRender & ~RENDER_NODEPTH;
+		const bool baseTexture =
+			flagsNoDepth == RENDER_TEXTURE &&
+			command.m_meshUV.x == 0.0f &&
+			command.m_meshUV.y == 0.0f &&
+			command.m_meshUV.z == 0.0f;
+		const bool chromeBright =
+			matrixSkeleton &&
+			flagsNoDepth == (RENDER_CHROME | RENDER_BRIGHT);
+		const bool metalBright =
+			matrixSkeleton &&
+			flagsNoDepth == (RENDER_METAL | RENDER_BRIGHT);
+
+		if (!baseTexture && !chromeBright && !metalBright)
 		{
 			modernBatchCompatible = false;
 			break;
@@ -804,7 +821,6 @@ void CGMMeshShader::FlushAllMesh()
 	}
 
 	bool modernBatchPrepared = false;
-	const bool modernScopeAllowed = BMDModernAllowModernForCurrentRenderScope();
 	if (gBMDModernRuntime.IsEnabled() && modernBatchCompatible && modernScopeAllowed)
 	{
 		static bool isolationPrepareLogged = false;
@@ -820,7 +836,7 @@ void CGMMeshShader::FlushAllMesh()
 						? static_cast<unsigned int>(palette->size() / 12u)
 						: 0u;
 				logFile
-					<< "[ModernBMD] remote-rollout isolation: PrepareBatch allowed for selected render scope"
+					<< "[ModernBMD] remote-rollout isolation: PrepareBatch allowed for captured command owners"
 					<< " model=" << m_Data[0].m_OldBMD->Name
 					<< " commands=" << m_Data.size()
 					<< " paletteBones=" << paletteBones
@@ -837,7 +853,7 @@ void CGMMeshShader::FlushAllMesh()
 			coherenceGuardLogged = true;
 			std::ofstream logFile("Data\\ModernBMD.log", std::ios::out | std::ios::app);
 			if (logFile.is_open())
-				logFile << "[ModernBMD] material coherence guard active: object has legacy overlay/pass; keeping complete flush on legacy renderer to prevent mixed-depth flashing\n";
+				logFile << "[ModernBMD] material coherence guard active: unsupported overlay/pass remains; modern parity currently texture + Matrix4x4 Chrome01/Metal bright, so complete flush stays legacy\n";
 		}
 	}
 	else if (gBMDModernRuntime.IsEnabled() && modernBatchCompatible && !modernScopeAllowed)
@@ -859,7 +875,7 @@ void CGMMeshShader::FlushAllMesh()
 						paletteBones = static_cast<unsigned int>(palette->size() / 12u);
 				}
 				logFile
-					<< "[ModernBMD] remote-rollout isolation: skipping modern PrepareBatch for non-selected render scope"
+					<< "[ModernBMD] remote-rollout isolation: skipping modern PrepareBatch because one or more captured command owners are outside selected rollout"
 					<< " model=" << modelName
 					<< " commands=" << m_Data.size()
 					<< " paletteBones=" << paletteBones
