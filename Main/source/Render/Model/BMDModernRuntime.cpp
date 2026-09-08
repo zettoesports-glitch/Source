@@ -178,6 +178,12 @@ namespace
         return MaterialFlagsWithoutDepth(command) == (RENDER_CHROME4 | RENDER_BRIGHT);
     }
 
+    static bool IsChrome05Material(const OGL330MODEL::RenderMeshVAO& command)
+    {
+        return MaterialFlagsWithoutDepth(command) ==
+            (RENDER_CHROME5 | RENDER_TEXTURE | RENDER_BRIGHT);
+    }
+
     static bool IsMetalMaterial(const OGL330MODEL::RenderMeshVAO& command)
     {
         return MaterialFlagsWithoutDepth(command) == (RENDER_METAL | RENDER_BRIGHT);
@@ -208,7 +214,7 @@ namespace
             constants.Wave[0] = command.m_setting1.z;
             constants.Wave[1] = command.m_setting1.z * 2.0f;
         }
-        else if (IsChrome04Material(command))
+        else if (IsChrome04Material(command) || IsChrome05Material(command))
         {
             constants.ChromeWave[0] = command.m_setting1.x;
             constants.ChromeWave[1] = command.m_setting1.y;
@@ -348,6 +354,7 @@ struct BMDModernRuntime::Impl
         BrightColor,
         Chrome01,
         Chrome04,
+        Chrome05,
         Metal
     };
 
@@ -370,6 +377,7 @@ struct BMDModernRuntime::Impl
     GLuint ColorProgram;
     GLuint ChromeProgram;
     GLuint Chrome04Program;
+    GLuint Chrome05Program;
     GLuint MetalProgram;
     ProgramMode Mode;
     GLint ProjectionLocation;
@@ -421,6 +429,7 @@ struct BMDModernRuntime::Impl
         , ColorProgram(0)
         , ChromeProgram(0)
         , Chrome04Program(0)
+        , Chrome05Program(0)
         , MetalProgram(0)
         , Mode(ProgramMode::None)
         , ProjectionLocation(-1)
@@ -488,6 +497,7 @@ struct BMDModernRuntime::Impl
     ~Impl()
     {
         DeleteProgram(MetalProgram);
+        DeleteProgram(Chrome05Program);
         DeleteProgram(Chrome04Program);
         DeleteProgram(ChromeProgram);
         DeleteProgram(ColorProgram);
@@ -515,6 +525,9 @@ struct BMDModernRuntime::Impl
             return MaterialMode::Chrome01;
         if (MatrixSkeleton && flags == (RENDER_CHROME4 | RENDER_BRIGHT))
             return MaterialMode::Chrome04;
+        if (MatrixSkeleton && flags ==
+            (RENDER_CHROME5 | RENDER_TEXTURE | RENDER_BRIGHT))
+            return MaterialMode::Chrome05;
         if (MatrixSkeleton && flags == (RENDER_METAL | RENDER_BRIGHT))
             return MaterialMode::Metal;
 
@@ -553,6 +566,7 @@ struct BMDModernRuntime::Impl
         case MaterialMode::BrightColor: return ColorProgram;
         case MaterialMode::Chrome01: return ChromeProgram;
         case MaterialMode::Chrome04: return Chrome04Program;
+        case MaterialMode::Chrome05: return Chrome05Program;
         case MaterialMode::Metal: return MetalProgram;
         default: return 0;
         }
@@ -592,6 +606,7 @@ struct BMDModernRuntime::Impl
         GLuint colorCandidate = 0;
         GLuint chromeCandidate = 0;
         GLuint chrome04Candidate = 0;
+        GLuint chrome05Candidate = 0;
         GLuint metalCandidate = 0;
         if (MatrixSkeleton)
         {
@@ -604,19 +619,24 @@ struct BMDModernRuntime::Impl
             chrome04Candidate = LoadProgram(
                 "Data\\Effect\\Modern\\Generated\\models\\chrome04_matrix.vs",
                 fragmentPath);
+            chrome05Candidate = LoadProgram(
+                "Data\\Effect\\Modern\\Generated\\models\\chrome05_matrix.vs",
+                fragmentPath);
             metalCandidate = LoadProgram(
                 "Data\\Effect\\Modern\\Generated\\models\\metal_matrix.vs",
                 fragmentPath);
 
             if (colorCandidate == 0 || chromeCandidate == 0 ||
-                chrome04Candidate == 0 || metalCandidate == 0)
+                chrome04Candidate == 0 || chrome05Candidate == 0 ||
+                metalCandidate == 0)
             {
                 DeleteProgram(metalCandidate);
+                DeleteProgram(chrome05Candidate);
                 DeleteProgram(chrome04Candidate);
                 DeleteProgram(chromeCandidate);
                 DeleteProgram(colorCandidate);
                 DeleteProgram(textureCandidate);
-                ModernLog("generated Matrix4x4 Color/Chrome01/Chrome04/Metal material program unavailable; keeping complete modern batch on legacy renderer");
+                ModernLog("generated Matrix4x4 Color/Chrome01/Chrome04/Chrome05/Metal material program unavailable; keeping complete modern batch on legacy renderer");
                 return false;
             }
         }
@@ -626,9 +646,11 @@ struct BMDModernRuntime::Impl
             (MatrixSkeleton && !ConfigureGeneratedProgram(colorCandidate)) ||
             (MatrixSkeleton && !ConfigureGeneratedProgram(chromeCandidate)) ||
             (MatrixSkeleton && !ConfigureGeneratedProgram(chrome04Candidate)) ||
+            (MatrixSkeleton && !ConfigureGeneratedProgram(chrome05Candidate)) ||
             (MatrixSkeleton && !ConfigureGeneratedProgram(metalCandidate)))
         {
             DeleteProgram(metalCandidate);
+            DeleteProgram(chrome05Candidate);
             DeleteProgram(chrome04Candidate);
             DeleteProgram(chromeCandidate);
             DeleteProgram(colorCandidate);
@@ -640,6 +662,7 @@ struct BMDModernRuntime::Impl
         ColorProgram = colorCandidate;
         ChromeProgram = chromeCandidate;
         Chrome04Program = chrome04Candidate;
+        Chrome05Program = chrome05Candidate;
         MetalProgram = metalCandidate;
         Mode = ProgramMode::Generated;
         ProjectionLocation = -1;
@@ -649,12 +672,13 @@ struct BMDModernRuntime::Impl
         // switched only when a material-specific draw actually occurs.
         Bindings.ConfigureProgram(Program);
 
-        char message[448] = { 0 };
+        char message[512] = { 0 };
         sprintf_s(message,
-                  "generated OpenGL model programs ready (texture, texture-bright%s%s%s%s; source contract: vulkan-main HLSL -> GLSL, skeleton=%s)",
+                  "generated OpenGL model programs ready (texture, texture-bright%s%s%s%s%s; source contract: vulkan-main HLSL -> GLSL, skeleton=%s)",
                   MatrixSkeleton ? ", color-bright" : "",
                   MatrixSkeleton ? ", chrome01" : "",
                   MatrixSkeleton ? ", chrome04" : "",
+                  MatrixSkeleton ? ", chrome05" : "",
                   MatrixSkeleton ? ", metal" : "",
                   EncodingName());
         ModernLog(message);
@@ -691,6 +715,7 @@ struct BMDModernRuntime::Impl
         ColorProgram = 0;
         ChromeProgram = 0;
         Chrome04Program = 0;
+        Chrome05Program = 0;
         MetalProgram = 0;
         Mode = ProgramMode::Experimental;
         ProjectionLocation = projection;
@@ -728,6 +753,7 @@ struct BMDModernRuntime::Impl
         ColorProgram = 0;
         ChromeProgram = 0;
         Chrome04Program = 0;
+        Chrome05Program = 0;
         MetalProgram = 0;
         return false;
     }
@@ -809,7 +835,7 @@ struct BMDModernRuntime::Impl
             {
                 if (material == MaterialMode::Unsupported)
                     LogDiagnostic(model, command, DiagnosticMaterial,
-                                  "material: unsupported flags (modern parity currently texture/texture-bright + Matrix4x4 bright-color/Chrome01/Chrome04/Metal bright)");
+                                  "material: unsupported flags (modern parity currently texture/texture-bright + Matrix4x4 bright-color/Chrome01/Chrome04/Chrome05/Metal bright)");
                 else
                     LogDiagnostic(model, command, DiagnosticMaterial,
                                   "material: unsupported Blend/stream UV encoding");
@@ -895,6 +921,12 @@ BMDModernRuntime::~BMDModernRuntime()
 bool BMDModernRuntime::IsEnabled() const
 {
     return m_Impl != NULL && m_Impl->Enabled;
+}
+
+bool BMDModernRuntime::IsBatchPrepared() const
+{
+    return m_Impl != NULL && m_Impl->Enabled &&
+           m_Impl->BatchPrepared && m_Impl->Program != 0;
 }
 
 bool BMDModernRuntime::IsMaterialCompatible(const OGL330MODEL::RenderMeshVAO& command) const
@@ -1008,10 +1040,11 @@ bool BMDModernRuntime::PrepareBatch(const OGL330MODEL::MeshVAO& commands)
 
     if (!m_Impl->MaterialProgramsLogged && m_Impl->MatrixSkeleton &&
         m_Impl->ColorProgram != 0 && m_Impl->ChromeProgram != 0 &&
-        m_Impl->Chrome04Program != 0 && m_Impl->MetalProgram != 0)
+        m_Impl->Chrome04Program != 0 && m_Impl->Chrome05Program != 0 &&
+        m_Impl->MetalProgram != 0)
     {
         m_Impl->MaterialProgramsLogged = true;
-        ModernLog("material parity rollout active: BRIGHT (0x40), TEXTURE|BRIGHT (0x42), CHROME|BRIGHT (0x44), METAL|BRIGHT (0x48), CHROME4|BRIGHT (0x1040) use Matrix4x4 ModernBMD programs; texture family accepts base and BlendMesh UV offsets");
+        ModernLog("material parity rollout active: BRIGHT (0x40), TEXTURE|BRIGHT (0x42), CHROME|BRIGHT (0x44), METAL|BRIGHT (0x48), CHROME4|BRIGHT (0x1040), CHROME5|TEXTURE|BRIGHT (0x4042) use Matrix4x4 ModernBMD programs; texture family accepts base and BlendMesh UV offsets");
     }
 
     if (!m_Impl->AtlasUploadLogged)
@@ -1245,6 +1278,8 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
             materialName = "chrome01";
         else if (material == Impl::MaterialMode::Chrome04)
             materialName = "chrome04";
+        else if (material == Impl::MaterialMode::Chrome05)
+            materialName = "chrome05";
         else if (material == Impl::MaterialMode::Metal)
             materialName = "metal";
 
