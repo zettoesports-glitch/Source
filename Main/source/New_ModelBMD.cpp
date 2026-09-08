@@ -786,7 +786,10 @@ void CGMMeshShader::FlushAllMesh()
 	// guard and TryRender cannot drift apart as new passes are migrated.
 	bool modernBatchCompatible = true;
 	bool modernScopeAllowed = true;
-	for (MeshVAO::const_iterator iter = m_Data.begin(); iter != m_Data.end(); ++iter)
+	const RenderMeshVAO* firstIncompatibleCommand = NULL;
+	size_t firstIncompatibleIndex = 0u;
+	size_t commandIndex = 0u;
+	for (MeshVAO::const_iterator iter = m_Data.begin(); iter != m_Data.end(); ++iter, ++commandIndex)
 	{
 		const RenderMeshVAO& command = *iter;
 
@@ -798,6 +801,8 @@ void CGMMeshShader::FlushAllMesh()
 		if (!gBMDModernRuntime.IsMaterialCompatible(command))
 		{
 			modernBatchCompatible = false;
+			firstIncompatibleCommand = &command;
+			firstIncompatibleIndex = commandIndex;
 			break;
 		}
 	}
@@ -836,6 +841,56 @@ void CGMMeshShader::FlushAllMesh()
 			std::ofstream logFile("Data\\ModernBMD.log", std::ios::out | std::ios::app);
 			if (logFile.is_open())
 				logFile << "[ModernBMD] material coherence guard active: runtime-reported unsupported overlay/pass remains; complete flush stays legacy\n";
+		}
+
+		static unsigned int coherenceBlockerLogs = 0u;
+		if (coherenceBlockerLogs < 8u && firstIncompatibleCommand != NULL)
+		{
+			++coherenceBlockerLogs;
+			const RenderMeshVAO& blocker = *firstIncompatibleCommand;
+			std::ofstream logFile("Data\\ModernBMD.log", std::ios::out | std::ios::app);
+			if (logFile.is_open())
+			{
+				const char* modelName =
+					(blocker.m_OldBMD != NULL && blocker.m_OldBMD->Name[0] != '\0')
+						? blocker.m_OldBMD->Name
+						: "<none>";
+				unsigned int paletteBones = 0u;
+				if (blocker.m_BonePalette && !blocker.m_BonePalette->empty() &&
+					(blocker.m_BonePalette->size() % 12u) == 0u)
+				{
+					paletteBones = static_cast<unsigned int>(blocker.m_BonePalette->size() / 12u);
+				}
+
+				logFile
+					<< "[ModernBMD] material coherence blocker:"
+					<< " command=" << firstIncompatibleIndex
+					<< " flags=0x" << std::hex << static_cast<unsigned int>(blocker.m_FlagRender) << std::dec
+					<< " mesh=" << blocker.m_IndexMesh
+					<< " texture=" << blocker.m_TextureID
+					<< " uv=(" << blocker.m_meshUV.x
+					<< "," << blocker.m_meshUV.y
+					<< "," << blocker.m_meshUV.z << ")"
+					<< " model=" << modelName
+					<< " paletteBones=" << paletteBones;
+
+				if (blocker.m_Owner != NULL)
+				{
+					logFile
+						<< " owner=" << blocker.m_Owner
+						<< " ownerKind=" << static_cast<unsigned int>(blocker.m_Owner->Kind)
+						<< " ownerType=" << blocker.m_Owner->Type;
+				}
+				else
+				{
+					logFile << " owner=<null>";
+				}
+
+				logFile
+					<< " commands=" << m_Data.size()
+					<< " completeFlush=legacy"
+					<< "\n";
+			}
 		}
 	}
 	else if (gBMDModernRuntime.IsEnabled() && modernBatchCompatible && !modernScopeAllowed)
