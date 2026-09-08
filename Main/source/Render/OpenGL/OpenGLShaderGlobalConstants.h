@@ -22,4 +22,6 @@ public:
 
 private:
     unsigned int m_Buffer;
+    Render::ShaderGlobalConstants m_LastConstants;
+    bool m_HasLastConstants;
 };

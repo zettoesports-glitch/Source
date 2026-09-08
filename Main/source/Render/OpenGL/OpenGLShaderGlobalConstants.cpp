@@ -1,8 +1,11 @@
 #include "stdafx.h"
 #include "OpenGLShaderGlobalConstants.h"
 
+#include <cstring>
+
 OpenGLShaderGlobalConstants::OpenGLShaderGlobalConstants()
     : m_Buffer(0)
+    , m_HasLastConstants(false)
 {
 }
 
@@ -52,6 +55,21 @@ bool OpenGLShaderGlobalConstants::Upload(const Render::ShaderGlobalConstants& co
     if (!Initialize())
         return false;
 
+    // Port of the useful part of Sven's GLP-10 idea: repeated meshes for the
+    // same object normally share the exact same camera/light/time constants.
+    // Keep the buffer bound to its expected slot, but avoid issuing another
+    // glBufferSubData when the 304-byte std140 payload is byte-identical.
+    if (m_HasLastConstants &&
+        std::memcmp(&m_LastConstants,
+                    &constants,
+                    sizeof(Render::ShaderGlobalConstants)) == 0)
+    {
+        glBindBufferBase(GL_UNIFORM_BUFFER,
+                         Render::ShaderGlobalConstantsBinding,
+                         m_Buffer);
+        return true;
+    }
+
     glBindBuffer(GL_UNIFORM_BUFFER, m_Buffer);
     glBufferSubData(GL_UNIFORM_BUFFER,
                     0,
@@ -61,6 +79,9 @@ bool OpenGLShaderGlobalConstants::Upload(const Render::ShaderGlobalConstants& co
                      Render::ShaderGlobalConstantsBinding,
                      m_Buffer);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+    m_LastConstants = constants;
+    m_HasLastConstants = true;
     return true;
 }
 
@@ -88,4 +109,6 @@ void OpenGLShaderGlobalConstants::Destroy()
         glDeleteBuffers(1, &m_Buffer);
         m_Buffer = 0;
     }
+
+    m_HasLastConstants = false;
 }

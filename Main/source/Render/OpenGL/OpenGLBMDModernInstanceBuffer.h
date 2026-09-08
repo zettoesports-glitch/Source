@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <unordered_set>
+#include <vector>
 
 struct BMDModernInstance;
 
@@ -14,7 +16,8 @@ public:
     OpenGLBMDModernInstanceBuffer& operator=(const OpenGLBMDModernInstanceBuffer&) = delete;
 
     // Uploads instance data and installs locations 6..12 into the supplied
-    // modern VAO. The buffer must outlive draws using that VAO.
+    // modern VAO. Attribute layout is cached per VAO because the GL VAO keeps
+    // the buffer object association until that VAO is destroyed.
     bool UploadAndAttach(unsigned int vertexArray,
                          const BMDModernInstance* instances,
                          std::uint32_t instanceCount);
@@ -27,4 +30,6 @@ public:
 private:
     unsigned int m_Buffer;
     std::uint32_t m_InstanceCount;
+    std::vector<unsigned char> m_LastUpload;
+    std::unordered_set<unsigned int> m_AttachedVertexArrays;
 };
