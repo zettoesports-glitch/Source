@@ -266,32 +266,73 @@ namespace
             return false;
 
         out.assign(command.m_BonePalette->begin(), command.m_BonePalette->end());
-        if (!command.m_ModernTranslate)
-            return true;
 
-        const float bodyScale = command.m_ModernBodyScale;
-        if (!std::isfinite(bodyScale) || std::fabs(bodyScale) <= 0.000001f)
-            return false;
-
-        const float invScale = 1.0f / bodyScale;
-        const float origin[3] =
+        if (command.m_ModernTranslate)
         {
-            command.m_ModernBodyOrigin.x,
-            command.m_ModernBodyOrigin.y,
-            command.m_ModernBodyOrigin.z
-        };
+            const float bodyScale = command.m_ModernBodyScale;
+            if (!std::isfinite(bodyScale) || std::fabs(bodyScale) <= 0.000001f)
+                return false;
 
-        const size_t boneCount = out.size() / 12u;
-        for (size_t bone = 0; bone < boneCount; ++bone)
-        {
-            float* matrix = out.data() + bone * 12u;
-            for (int row = 0; row < 3; ++row)
+            const float invScale = 1.0f / bodyScale;
+            const float origin[3] =
             {
-                float* affineRow = matrix + row * 4;
-                affineRow[0] *= invScale;
-                affineRow[1] *= invScale;
-                affineRow[2] *= invScale;
-                affineRow[3] = (affineRow[3] - origin[row]) * invScale;
+                command.m_ModernBodyOrigin.x,
+                command.m_ModernBodyOrigin.y,
+                command.m_ModernBodyOrigin.z
+            };
+
+            const size_t boneCount = out.size() / 12u;
+            for (size_t bone = 0; bone < boneCount; ++bone)
+            {
+                float* matrix = out.data() + bone * 12u;
+                for (int row = 0; row < 3; ++row)
+                {
+                    float* affineRow = matrix + row * 4;
+                    affineRow[0] *= invScale;
+                    affineRow[1] *= invScale;
+                    affineRow[2] *= invScale;
+                    affineRow[3] = (affineRow[3] - origin[row]) * invScale;
+                }
+            }
+        }
+
+        // BMD::Animation intentionally skips Dummy bones, so shared/reused bone
+        // buffers can retain an older model's transform in those slots. Never
+        // upload that stale data to the modern atlas. Sanitize only slots that
+        // are both inside this model's NumBones and inside the captured palette;
+        // do not touch unused tail storage because callers can provide shorter
+        // palettes. This mirrors the stale-bone protection used by the Core
+        // renderer while preserving the legacy path byte-for-byte.
+        BMD* model = command.m_OldBMD;
+        if (model != NULL && model->Bones != NULL && model->NumBones > 0)
+        {
+            const size_t paletteBoneCount = out.size() / 12u;
+            size_t modelBoneCount = static_cast<size_t>(model->NumBones);
+            if (modelBoneCount > paletteBoneCount)
+                modelBoneCount = paletteBoneCount;
+
+            bool sanitizedAny = false;
+            for (size_t bone = 0; bone < modelBoneCount; ++bone)
+            {
+                if (!model->Bones[bone].Dummy)
+                    continue;
+
+                float* matrix = out.data() + bone * 12u;
+                std::memset(matrix, 0, sizeof(float) * 12u);
+                matrix[0] = 1.0f;
+                matrix[5] = 1.0f;
+                matrix[10] = 1.0f;
+                sanitizedAny = true;
+            }
+
+            if (sanitizedAny)
+            {
+                static bool logged = false;
+                if (!logged)
+                {
+                    logged = true;
+                    ModernLog("modern skeleton palette sanitizes Dummy bones to identity within captured NumBones; legacy palette remains unchanged");
+                }
             }
         }
 
