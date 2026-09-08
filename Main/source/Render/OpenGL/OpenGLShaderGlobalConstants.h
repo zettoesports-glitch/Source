@@ -24,4 +24,9 @@ private:
     unsigned int m_Buffer;
     Render::ShaderGlobalConstants m_LastConstants;
     bool m_HasLastConstants;
+
+    // ModernBMD borrows one indexed UBO slot from the mixed legacy/Core frame.
+    // Snapshot and restore the previous object instead of clearing the slot.
+    mutable bool m_Bound;
+    mutable unsigned int m_PreviousBaseBuffer;
 };

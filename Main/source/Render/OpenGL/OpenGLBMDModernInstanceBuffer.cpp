@@ -57,6 +57,15 @@ bool OpenGLBMDModernInstanceBuffer::UploadAndAttach(
     const unsigned char* uploadBytes =
         reinterpret_cast<const unsigned char*>(instances);
 
+    // ModernBMD is embedded inside the legacy renderer. Treat the generic
+    // ARRAY_BUFFER and VAO bindings as borrowed state rather than resetting them
+    // to zero after every upload, mirroring the explicit ownership rule used by
+    // Sven's Core Profile BindState layer.
+    GLint previousArrayBuffer = 0;
+    GLint previousVertexArray = 0;
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &previousArrayBuffer);
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &previousVertexArray);
+
     glBindBuffer(GL_ARRAY_BUFFER, m_Buffer);
 
     // Keep the existing orphan/upload behaviour when the instance changes,
@@ -100,8 +109,8 @@ bool OpenGLBMDModernInstanceBuffer::UploadAndAttach(
 
     m_InstanceCount = instanceCount;
 
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
+    glBindVertexArray(static_cast<GLuint>(previousVertexArray));
+    glBindBuffer(GL_ARRAY_BUFFER, static_cast<GLuint>(previousArrayBuffer));
     return true;
 }
 

@@ -103,11 +103,23 @@ void CGMShaderBMD::Render(OGL330MODEL::RenderMeshVAO& r)
 	// isolated remote-player rollout, only the selected OBJECT render scope may
 	// call TryRender; world objects/local Hero continue through this same legacy
 	// shader path without being globally disabled.
-	if (BMDModernAllowModernForCommand(r.m_Owner) &&
-		gBMDModernRuntime.IsEnabled() && gBMDModernRuntime.TryRender(r))
+	const bool modernAttempt =
+		BMDModernAllowModernForCommand(r.m_Owner) && gBMDModernRuntime.IsEnabled();
+	if (modernAttempt)
 	{
+		if (gBMDModernRuntime.TryRender(r))
+		{
+			OGL330MODEL::InvalidateShaderCache();
+			return;
+		}
+
+		// TryRender temporarily owns the GL program. Some failure paths occur only
+		// after the modern program has been bound. Re-establish the legacy BMD
+		// program explicitly before continuing the fallback path; otherwise the
+		// shader cache can still say r.m_Shader is active while GL_CURRENT_PROGRAM
+		// has already been reset by the modern attempt.
 		OGL330MODEL::InvalidateShaderCache();
-		return;
+		OGL330MODEL::UseShader(r.m_Shader);
 	}
 
 	SendUniform(r.m_Shader, r.m_bodyLight, r.m_lightPosition, r.m_meshUV, r.m_setting1, r.m_setting2, r.m_isLight, (r.m_FlagRender & RENDER_SHADOWMAP), r.m_OldBMD->BodyOrigin);
