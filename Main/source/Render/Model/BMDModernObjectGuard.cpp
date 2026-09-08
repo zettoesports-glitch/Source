@@ -173,15 +173,18 @@ bool BMDModernAllowModernForCurrentRenderScope()
 
 bool BMDModernAllowModernForCommand(const OBJECT* owner)
 {
-    if (!BMDModernAllowModernForCurrentRenderScope())
-        return false;
-
     static const bool remoteRolloutIsolation =
         GetPrivateProfileIntA("ModernRenderer", "RemoteRolloutIsolation", 0,
                               ".\\Data\\Custom\\config.ini") != 0;
     if (!remoteRolloutIsolation)
         return true;
 
+    // A queued draw already carries the OBJECT that owned it when the command
+    // was recorded. Do not consult the mutable render-scope stack here: flushes
+    // can happen after a nested scope has popped or changed. This follows the
+    // explicit per-draw state ownership used by the Core Profile renderer and
+    // prevents a valid selected remote from losing its modern batch merely
+    // because the current stack no longer points at that object.
     return BMDModernIsSelectedRemoteRolloutObject(owner);
 }
 
