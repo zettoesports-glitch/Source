@@ -1,6 +1,7 @@
 #include "StdAfx.h"
 #include "New_ModelBMD.h"
 #include <filesystem> // C++17
+#include <cmath>
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -782,9 +783,10 @@ void CGMMeshShader::FlushAllMesh()
 	OGL330MODEL::BeginUniformBatch();
 
 	// Keep the full object flush on one renderer whenever an unsupported overlay
-	// remains. This parity pack admits base/bright texture plus Matrix4x4
-	// Chrome01, Chrome04 and Metal bright passes. Every other material still
-	// forces the complete flush through legacy to avoid mixed-depth flashing.
+	// remains. This parity pack admits base/bright texture, including the known
+	// BlendMesh/stream-UV marker, plus Matrix4x4 Chrome01, Chrome04 and Metal
+	// bright passes. Every other material still forces the complete flush through
+	// legacy to avoid mixed-depth flashing.
 	static const bool matrixSkeleton =
 		GetPrivateProfileIntA("ModernRenderer", "MatrixSkeleton", 1,
 			".\\Data\\Custom\\config.ini") != 0;
@@ -801,12 +803,18 @@ void CGMMeshShader::FlushAllMesh()
 			modernScopeAllowed = false;
 
 		const int flagsNoDepth = command.m_FlagRender & ~RENDER_NODEPTH;
-		const bool textureFamily =
-			(flagsNoDepth == RENDER_TEXTURE ||
-			 flagsNoDepth == (RENDER_TEXTURE | RENDER_BRIGHT)) &&
+		const bool baseUV =
 			command.m_meshUV.x == 0.0f &&
 			command.m_meshUV.y == 0.0f &&
 			command.m_meshUV.z == 0.0f;
+		const bool blendStreamUV =
+			command.m_meshUV.z == 1.0f &&
+			std::isfinite(command.m_meshUV.x) &&
+			std::isfinite(command.m_meshUV.y);
+		const bool textureFamily =
+			(flagsNoDepth == RENDER_TEXTURE ||
+			 flagsNoDepth == (RENDER_TEXTURE | RENDER_BRIGHT)) &&
+			(baseUV || blendStreamUV);
 		const bool chromeBright =
 			matrixSkeleton &&
 			flagsNoDepth == (RENDER_CHROME | RENDER_BRIGHT);
@@ -857,7 +865,7 @@ void CGMMeshShader::FlushAllMesh()
 			coherenceGuardLogged = true;
 			std::ofstream logFile("Data\\ModernBMD.log", std::ios::out | std::ios::app);
 			if (logFile.is_open())
-				logFile << "[ModernBMD] material coherence guard active: unsupported overlay/pass remains; modern parity currently texture/texture-bright + Matrix4x4 Chrome01/Chrome04/Metal bright, so complete flush stays legacy\n";
+				logFile << "[ModernBMD] material coherence guard active: unsupported overlay/pass remains; modern parity currently texture/texture-bright (base + BlendMesh UV) + Matrix4x4 Chrome01/Chrome04/Metal bright, so complete flush stays legacy\n";
 		}
 	}
 	else if (gBMDModernRuntime.IsEnabled() && modernBatchCompatible && !modernScopeAllowed)
