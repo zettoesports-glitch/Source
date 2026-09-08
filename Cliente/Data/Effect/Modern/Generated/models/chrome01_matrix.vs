@@ -1,6 +1,7 @@
-// Runtime Matrix4x4 variant of vulkan-main/vulkan-main/Shaders/models/chrome01.vs.
-// Keeps the reference material math while using the 4-texel Matrix4x4 skeleton atlas.
-// Source contract: HLSL chrome01 + common/SkeletonHelpers.inc with matrix storage.
+// Runtime Matrix4x4 variant of vulkan-main model chrome shaders.
+// Plain Chrome01 follows chrome01.vs. A sentinel in Wave.x == 1.0 selects
+// Chrome04 parity using immutable values captured by the legacy command path.
+// Source contracts: HLSL chrome01.vs/chrome04.vs + Matrix4x4 skeleton storage.
 
 layout(std140) uniform GlobalConstants
 {
@@ -76,8 +77,29 @@ void main()
 
     gl_Position = position;
     output_Color = clamp(input_BodyLight, vec4(0.0), vec4(1.0));
-    output_UV = normal.zy * 0.5 +
-                vec2(GlobalConstantsData.Wave.x,
-                     GlobalConstantsData.Wave.x * 2.0);
+
+    // Chrome04 compatibility alias: MakeShaderType(CHROME4) captures
+    // setting1.z = 1.0, while Chrome01's wave is always <= 0.9999. The C++
+    // dispatcher aliases only the zero-BlendUV Chrome04 pass to Chrome01 and
+    // copies its captured (cos, sin, wave) into GlobalConstants.LightPosition.
+    // This keeps delayed flushes independent of mutable WorldTime/BMD state.
+    if (GlobalConstantsData.Wave.x > 0.99995)
+    {
+        vec3 chromeWave = vec3(GlobalConstantsData.LightPosition.x,
+                              GlobalConstantsData.LightPosition.y,
+                              1.0);
+        float wave = GlobalConstantsData.LightPosition.z;
+        float dotr = dot(normal, chromeWave);
+        vec2 uv = normal.yz * 0.5 + vec2(chromeWave.y * 3.0, wave * 3.0);
+        uv.y = -uv.y;
+        output_UV = vec2(dotr, 1.0 - dotr) + uv;
+    }
+    else
+    {
+        output_UV = normal.zy * 0.5 +
+                    vec2(GlobalConstantsData.Wave.x,
+                         GlobalConstantsData.Wave.x * 2.0);
+    }
+
     output_MinAlpha = input_Data.y;
 }
