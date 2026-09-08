@@ -113,6 +113,14 @@ namespace
         return value;
     }
 
+    bool NpcMonsterSingleObject()
+    {
+        static const bool value =
+            GetPrivateProfileIntA("ModernRenderer", "NpcMonsterSingleObject", 1,
+                                  ".\\Data\\Custom\\config.ini") != 0;
+        return value;
+    }
+
     bool IsStaleSelectedRemoteObject(const OBJECT* object)
     {
         if (object == NULL)
@@ -253,6 +261,13 @@ namespace
         if (!NpcMonsterMatchesFilter(object))
             return false;
 
+        // After a type has passed single-instance validation, this switch can
+        // admit every live object of that same configured type without widening
+        // the rollout to any other NPC/monster model. Setting it back to 1
+        // restores the original first-live-object quarantine immediately.
+        if (!NpcMonsterSingleObject())
+            return true;
+
         ClearSelectedNpcMonsterIfStale();
         if (g_SelectedNpcMonsterObject == NULL)
             g_SelectedNpcMonsterObject = object;
@@ -365,7 +380,7 @@ bool BMDModernAllowModernForCommand(const OBJECT* owner)
     // was recorded. Do not consult the mutable render-scope stack here: flushes
     // can happen after a nested scope has popped or changed. The same immutable
     // owner gate now admits either the configured remote-player rollout or the
-    // single selected NPC/monster rollout target.
+    // configured NPC/monster type rollout.
     return ObjectAllowedByIsolation(owner);
 }
 
@@ -444,11 +459,13 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
     const bool legacySos3Bi01WorldAsset = IsSos3Bi01LegacyWorldAsset(object);
 
     // Safe default remains legacy. ForceLegacyRemotePlayers=0 explicitly opens
-    // the player rollout. NPC/monster rollout is a separate opt-in and always
-    // selects only one live object matching NpcMonsterType at a time.
+    // the player rollout. NPC/monster rollout is a separate opt-in; its type
+    // filter stays mandatory while NpcMonsterSingleObject controls whether one
+    // or all live instances of that exact type are admitted.
     const bool forceLegacyRemotePlayers = ForceLegacyRemotePlayers();
     const int remotePlayerClass = RemotePlayerClassFilter();
     const bool remotePlayerSingleObject = RemotePlayerSingleObject();
+    const bool npcMonsterSingleObject = NpcMonsterSingleObject();
 
     const int remoteBaseClass = isRemotePlayerLike ? GetRemoteBaseClass(object) : -1;
     const bool remoteClassRejected =
@@ -513,7 +530,7 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
         {
             static std::unordered_set<ObjectLogKey, ObjectLogKeyHash> loggedModernNpcMonsterObjects;
             const ObjectLogKey key = MakeObjectLogKey(object, -1);
-            if (loggedModernNpcMonsterObjects.size() < 8u &&
+            if (loggedModernNpcMonsterObjects.size() < 16u &&
                 loggedModernNpcMonsterObjects.insert(key).second)
             {
                 std::ofstream logFile("Data\\ModernBMD.log", std::ios::out | std::ios::app);
@@ -524,11 +541,13 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
                         modelName = Models[object->Type].Name;
 
                     logFile
-                        << "[ModernBMD] object-instance rollout: selected npc/monster allowed to modern candidate"
+                        << "[ModernBMD] object-instance rollout: npc/monster allowed to modern candidate"
                         << " object=" << object
                         << " kind=" << static_cast<unsigned int>(object->Kind)
                         << " type=" << object->Type
                         << " targetType=" << NpcMonsterTypeFilter()
+                        << " singleObject=" << (npcMonsterSingleObject ? 1 : 0)
+                        << " selected=" << (npcMonsterSingleObject && g_SelectedNpcMonsterObject == object ? 1 : 0)
                         << " model=" << modelName
                         << " position=(" << object->Position[0]
                         << "," << object->Position[1]
@@ -554,9 +573,10 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
     }
     else if (npcOrMonster && NpcMonsterRolloutEnabled())
     {
-        reason = npcMonsterFilterMatched
-            ? "npc/monster-single-object-filter"
-            : "npc/monster-type-filter";
+        if (!npcMonsterFilterMatched)
+            reason = "npc/monster-type-filter";
+        else if (npcMonsterSingleObject)
+            reason = "npc/monster-single-object-filter";
     }
 
     // OBJECT slots are reused by the client. Key diagnostics by the observed
@@ -593,7 +613,8 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
             else if (npcOrMonster && NpcMonsterRolloutEnabled())
             {
                 logFile
-                    << " targetType=" << NpcMonsterTypeFilter();
+                    << " targetType=" << NpcMonsterTypeFilter()
+                    << " singleObject=" << (npcMonsterSingleObject ? 1 : 0);
             }
 
             logFile
