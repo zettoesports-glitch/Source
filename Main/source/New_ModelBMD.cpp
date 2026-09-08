@@ -2,6 +2,7 @@
 #include "New_ModelBMD.h"
 #include <filesystem> // C++17
 #include <iostream>
+#include <fstream>
 #include <sstream>
 #include <unordered_map>
 #if jdk_shader_local330
@@ -802,8 +803,29 @@ void CGMMeshShader::FlushAllMesh()
 	}
 
 	bool modernBatchPrepared = false;
-	if (gBMDModernRuntime.IsEnabled() && modernBatchCompatible)
+	const bool modernScopeAllowed = BMDModernAllowModernForCurrentRenderScope();
+	if (gBMDModernRuntime.IsEnabled() && modernBatchCompatible && modernScopeAllowed)
 	{
+		static bool isolationPrepareLogged = false;
+		if (!isolationPrepareLogged && !m_Data.empty() && m_Data[0].m_OldBMD != NULL)
+		{
+			isolationPrepareLogged = true;
+			std::ofstream logFile("Data\\ModernBMD.log", std::ios::out | std::ios::app);
+			if (logFile.is_open())
+			{
+				const std::shared_ptr<std::vector<float> >& palette = m_Data[0].m_BonePalette;
+				const unsigned int paletteBones =
+					(palette && !palette->empty() && (palette->size() % 12u) == 0u)
+						? static_cast<unsigned int>(palette->size() / 12u)
+						: 0u;
+				logFile
+					<< "[ModernBMD] remote-rollout isolation: PrepareBatch allowed for selected render scope"
+					<< " model=" << m_Data[0].m_OldBMD->Name
+					<< " commands=" << m_Data.size()
+					<< " paletteBones=" << paletteBones
+					<< "\n";
+			}
+		}
 		modernBatchPrepared = gBMDModernRuntime.PrepareBatch(m_Data);
 	}
 	else if (gBMDModernRuntime.IsEnabled() && !modernBatchCompatible)
@@ -815,6 +837,33 @@ void CGMMeshShader::FlushAllMesh()
 			std::ofstream logFile("Data\\ModernBMD.log", std::ios::out | std::ios::app);
 			if (logFile.is_open())
 				logFile << "[ModernBMD] material coherence guard active: object has legacy overlay/pass; keeping complete flush on legacy renderer to prevent mixed-depth flashing\n";
+		}
+	}
+	else if (gBMDModernRuntime.IsEnabled() && modernBatchCompatible && !modernScopeAllowed)
+	{
+		static unsigned int isolationSkipLogs = 0;
+		if (isolationSkipLogs < 4u)
+		{
+			++isolationSkipLogs;
+			std::ofstream logFile("Data\\ModernBMD.log", std::ios::out | std::ios::app);
+			if (logFile.is_open())
+			{
+				const char* modelName = "<none>";
+				unsigned int paletteBones = 0;
+				if (!m_Data.empty() && m_Data[0].m_OldBMD != NULL)
+				{
+					modelName = m_Data[0].m_OldBMD->Name;
+					const std::shared_ptr<std::vector<float> >& palette = m_Data[0].m_BonePalette;
+					if (palette && !palette->empty() && (palette->size() % 12u) == 0u)
+						paletteBones = static_cast<unsigned int>(palette->size() / 12u);
+				}
+				logFile
+					<< "[ModernBMD] remote-rollout isolation: skipping modern PrepareBatch for non-selected render scope"
+					<< " model=" << modelName
+					<< " commands=" << m_Data.size()
+					<< " paletteBones=" << paletteBones
+					<< "\n";
+			}
 		}
 	}
 

@@ -302,6 +302,8 @@ struct BMDModernRuntime::Impl
     bool Diagnostics;
     int DiagnosticLimit;
     int DiagnosticMessages;
+    int DrawFailureMessages;
+    static const int DrawFailureLimit = 8;
     int MinBones;
     int MinActions;
     int MaxAtlasPoses;
@@ -346,6 +348,7 @@ struct BMDModernRuntime::Impl
         , DiagnosticLimit(GetPrivateProfileIntA("ModernRenderer", "DiagnosticLimit", 24,
                                                 ".\\Data\\Custom\\config.ini"))
         , DiagnosticMessages(0)
+        , DrawFailureMessages(0)
         , MinBones(GetPrivateProfileIntA("ModernRenderer", "MinBones", 20,
                                          ".\\Data\\Custom\\config.ini"))
         , MinActions(GetPrivateProfileIntA("ModernRenderer", "MinActions", 2,
@@ -565,6 +568,25 @@ struct BMDModernRuntime::Impl
             ModernLog("diagnostic limit reached; further candidate fallback messages suppressed");
     }
 
+    void LogDrawFailure(BMD* model,
+                        const OGL330MODEL::RenderMeshVAO& command,
+                        const char* reason)
+    {
+        if (!Diagnostics || reason == NULL || DrawFailureMessages >= DrawFailureLimit)
+            return;
+
+        ++DrawFailureMessages;
+        char message[512] = { 0 };
+        sprintf_s(message,
+                  "isolated modern draw failed: %.31s mesh=%d paletteBones=%u flags=0x%08X -> %s",
+                  (model != NULL && model->Name[0] != '\0') ? model->Name : "<none>",
+                  command.m_IndexMesh,
+                  GetPaletteBoneCount(command),
+                  static_cast<unsigned int>(command.m_FlagRender),
+                  reason);
+        ModernLog(message);
+    }
+
     bool IsEligible(const OGL330MODEL::RenderMeshVAO& command, bool logReason)
     {
         BMD* model = command.m_OldBMD;
@@ -767,9 +789,20 @@ bool BMDModernRuntime::PrepareBatch(const OGL330MODEL::MeshVAO& commands)
     if (!m_Impl->AtlasUploadLogged)
     {
         m_Impl->AtlasUploadLogged = true;
-        char message[320] = { 0 };
+        const char* firstModelName = "<none>";
+        for (OGL330MODEL::MeshVAO::const_iterator iter = commands.begin();
+             iter != commands.end(); ++iter)
+        {
+            if (iter->m_OldBMD != NULL && iter->m_OldBMD->Name[0] != '\0')
+            {
+                firstModelName = iter->m_OldBMD->Name;
+                break;
+            }
+        }
+        char message[384] = { 0 };
         sprintf_s(message,
-                  "skeleton atlas uploaded once for batch: poses=%u bones=%u reused=%u commands=%u shader=%s encoding=%s texelsPerBone=%u",
+                  "skeleton atlas uploaded once for batch: model=%.31s poses=%u bones=%u reused=%u commands=%u shader=%s encoding=%s texelsPerBone=%u",
+                  firstModelName,
                   stats.PoseCount,
                   stats.BoneCount,
                   stats.ReusedPoseCount,
@@ -803,23 +836,36 @@ void BMDModernRuntime::FinishBatch()
 
 bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
 {
-    if (m_Impl == NULL || !m_Impl->Enabled || !m_Impl->BatchPrepared ||
-        m_Impl->Program == 0 || !m_Impl->IsEligible(command, true))
+    if (m_Impl == NULL || !m_Impl->Enabled)
+        return false;
+
+    if (!m_Impl->BatchPrepared || m_Impl->Program == 0)
     {
+        m_Impl->LogDrawFailure(command.m_OldBMD, command,
+                               !m_Impl->BatchPrepared
+                                   ? "draw: batch not prepared (coherence, empty atlas, or isolation skipped PrepareBatch)"
+                                   : "draw: modern shader program unavailable");
         return false;
     }
+
+    if (!m_Impl->IsEligible(command, true))
+        return false;
 
     BMD* model = command.m_OldBMD;
     const void* poseKey = command.m_BonePalette.get();
     const BMDModernSkeletonSubmission* submission = m_Impl->Atlas.Find(poseKey);
     if (submission == NULL || !submission->Success)
+    {
+        m_Impl->LogDrawFailure(model, command, "draw: pose missing from prepared skeleton atlas");
         return false;
+    }
 
     ModernMeshGpu* mesh = m_Impl->GetMesh(model, command.m_IndexMesh);
     if (mesh == NULL || !mesh->Vao.IsValid())
     {
         m_Impl->LogDiagnostic(model, command, Impl::DiagnosticMesh,
                               "mesh: modern CPU mesh/VAO creation failed");
+        m_Impl->LogDrawFailure(model, command, "draw: modern CPU mesh/VAO creation failed");
         return false;
     }
 
@@ -854,6 +900,7 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
     {
         m_Impl->LogDiagnostic(model, command, Impl::DiagnosticInstance,
                               "instance: upload/attribute attach failed");
+        m_Impl->LogDrawFailure(model, command, "draw: instance upload/attribute attach failed");
         return false;
     }
 
@@ -872,6 +919,7 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
         {
             m_Impl->LogDiagnostic(model, command, Impl::DiagnosticGlobals,
                                   "globals: GlobalConstants upload failed");
+            m_Impl->LogDrawFailure(model, command, "draw: GlobalConstants upload failed");
             glUseProgram(0);
             return false;
         }
@@ -888,6 +936,7 @@ bool BMDModernRuntime::TryRender(const OGL330MODEL::RenderMeshVAO& command)
     {
         m_Impl->LogDiagnostic(model, command, Impl::DiagnosticBindings,
                               "bindings: material/skeleton texture bind failed");
+        m_Impl->LogDrawFailure(model, command, "draw: material/skeleton texture bind failed");
         glUseProgram(0);
         return false;
     }

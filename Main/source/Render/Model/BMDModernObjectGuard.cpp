@@ -20,6 +20,43 @@ namespace
     const OBJECT* g_SelectedRemoteObject = NULL;
     std::vector<const OBJECT*> g_RenderScopeStack;
 
+    bool IsStaleSelectedRemoteObject(const OBJECT* object)
+    {
+        if (object == NULL)
+            return true;
+        if (!object->Live)
+            return true;
+        if (object->Kind != KIND_PLAYER)
+            return true;
+        if (Hero != NULL && object == &Hero->Object)
+            return true;
+        return false;
+    }
+
+    void ClearSelectedRemoteIfStale()
+    {
+        if (g_SelectedRemoteObject == NULL || !IsStaleSelectedRemoteObject(g_SelectedRemoteObject))
+            return;
+
+        static bool staleClearLogged = false;
+        if (!staleClearLogged)
+        {
+            staleClearLogged = true;
+            std::ofstream logFile("Data\\ModernBMD.log", std::ios::out | std::ios::app);
+            if (logFile.is_open())
+            {
+                logFile
+                    << "[ModernBMD] remote-rollout isolation: selected remote object went stale; allowing reselection"
+                    << " object=" << g_SelectedRemoteObject
+                    << " kind=" << static_cast<unsigned int>(g_SelectedRemoteObject->Kind)
+                    << " live=" << (g_SelectedRemoteObject->Live ? 1 : 0)
+                    << "\n";
+            }
+        }
+
+        g_SelectedRemoteObject = NULL;
+    }
+
     const CHARACTER* FindCharacterForObject(const OBJECT* object)
     {
         if (object == NULL || CharactersClient == NULL)
@@ -96,6 +133,7 @@ namespace
 
 bool BMDModernIsSelectedRemoteRolloutObject(const OBJECT* object)
 {
+    ClearSelectedRemoteIfStale();
     return object != NULL && g_SelectedRemoteObject != NULL && object == g_SelectedRemoteObject;
 }
 
@@ -226,6 +264,7 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
     bool remoteObjectRejected = false;
     if (isRemotePlayerLike && !forceLegacyRemotePlayers && !remoteClassRejected && remotePlayerSingleObject)
     {
+        ClearSelectedRemoteIfStale();
         if (g_SelectedRemoteObject == NULL)
             g_SelectedRemoteObject = object;
         remoteObjectRejected = g_SelectedRemoteObject != object;
