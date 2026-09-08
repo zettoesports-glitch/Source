@@ -16,6 +16,7 @@ namespace
     int g_LegacyDoubleSidedDepth = 0;
     GLboolean g_LegacyDoubleSidedPreviousGlCull = GL_FALSE;
     bool g_LegacyDoubleSidedPreviousCullTracker = false;
+    const OBJECT* g_SelectedRemoteObject = NULL;
 
     const CHARACTER* FindCharacterForObject(const OBJECT* object)
     {
@@ -89,6 +90,11 @@ namespace
         // Kind == 0 is also used by weapons, skills and helper objects.
         return std::strstr(modelName, "Object52\\sos3bi01.smd") != NULL;
     }
+}
+
+bool BMDModernIsSelectedRemoteRolloutObject(const OBJECT* object)
+{
+    return object != NULL && g_SelectedRemoteObject != NULL && object == g_SelectedRemoteObject;
 }
 
 bool BMDModernLegacyCullSuppressed()
@@ -188,13 +194,12 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
         isRemotePlayerLike && !forceLegacyRemotePlayers &&
         remotePlayerClass >= 0 && remoteBaseClass != remotePlayerClass;
 
-    static const OBJECT* selectedRemoteObject = NULL;
     bool remoteObjectRejected = false;
     if (isRemotePlayerLike && !forceLegacyRemotePlayers && !remoteClassRejected && remotePlayerSingleObject)
     {
-        if (selectedRemoteObject == NULL)
-            selectedRemoteObject = object;
-        remoteObjectRejected = selectedRemoteObject != object;
+        if (g_SelectedRemoteObject == NULL)
+            g_SelectedRemoteObject = object;
+        remoteObjectRejected = g_SelectedRemoteObject != object;
     }
 
     const bool remotePlayerLike =
@@ -228,6 +233,7 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
                         << " className=" << RemoteBaseClassName(remoteBaseClass)
                         << " classFilter=" << remotePlayerClass
                         << " singleObject=" << (remotePlayerSingleObject ? 1 : 0)
+                        << " selected=" << (BMDModernIsSelectedRemoteRolloutObject(object) ? 1 : 0)
                         << " position=(" << object->Position[0]
                         << "," << object->Position[1]
                         << "," << object->Position[2] << ")"
