@@ -19,12 +19,22 @@ set "GIT_HEAD=<unknown>"
 
 for /f "usebackq tokens=*" %%H in (`git -C "%ROOT%" rev-parse HEAD 2^>nul`) do set "GIT_HEAD=%%H"
 
-git -C "%ROOT%" diff --quiet -- "Main/source/Render/Model/BMDModernObjectGuard.cpp" "Main/source/Render/Model/BMDModernRuntime.cpp"
+git -C "%ROOT%" diff --quiet -- ^
+  "Main/source/New_ModelBMD.h" ^
+  "Main/source/New_ModelBMD.cpp" ^
+  "Main/source/New_RenderBMD.cpp" ^
+  "Main/source/Render/Model/BMDModernObjectGuard.cpp" ^
+  "Main/source/Render/Model/BMDModernRuntime.cpp"
 if errorlevel 1 (
     echo [ERROR] Critical ModernBMD renderer sources have local modifications.
     echo         Refusing to build a binary that does not match Git HEAD.
     echo         Modified renderer files:
-    git -C "%ROOT%" diff --name-only -- "Main/source/Render/Model/BMDModernObjectGuard.cpp" "Main/source/Render/Model/BMDModernRuntime.cpp"
+    git -C "%ROOT%" diff --name-only -- ^
+      "Main/source/New_ModelBMD.h" ^
+      "Main/source/New_ModelBMD.cpp" ^
+      "Main/source/New_RenderBMD.cpp" ^
+      "Main/source/Render/Model/BMDModernObjectGuard.cpp" ^
+      "Main/source/Render/Model/BMDModernRuntime.cpp"
     exit /b 8
 )
 
