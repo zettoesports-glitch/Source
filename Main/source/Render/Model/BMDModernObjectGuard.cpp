@@ -10,6 +10,7 @@
 #include <cstring>
 #include <fstream>
 #include <unordered_set>
+#include <vector>
 
 namespace
 {
@@ -17,6 +18,7 @@ namespace
     GLboolean g_LegacyDoubleSidedPreviousGlCull = GL_FALSE;
     bool g_LegacyDoubleSidedPreviousCullTracker = false;
     const OBJECT* g_SelectedRemoteObject = NULL;
+    std::vector<const OBJECT*> g_RenderScopeStack;
 
     const CHARACTER* FindCharacterForObject(const OBJECT* object)
     {
@@ -95,6 +97,33 @@ namespace
 bool BMDModernIsSelectedRemoteRolloutObject(const OBJECT* object)
 {
     return object != NULL && g_SelectedRemoteObject != NULL && object == g_SelectedRemoteObject;
+}
+
+void BMDModernPushRenderScope(const OBJECT* object)
+{
+    g_RenderScopeStack.push_back(object);
+}
+
+void BMDModernPopRenderScope()
+{
+    if (!g_RenderScopeStack.empty())
+        g_RenderScopeStack.pop_back();
+}
+
+bool BMDModernAllowModernForCurrentRenderScope()
+{
+    static const bool remoteRolloutIsolation =
+        GetPrivateProfileIntA("ModernRenderer", "RemoteRolloutIsolation", 0,
+                              ".\\Data\\Custom\\config.ini") != 0;
+
+    if (!remoteRolloutIsolation)
+        return true;
+
+    if (g_RenderScopeStack.empty())
+        return false;
+
+    const OBJECT* current = g_RenderScopeStack.back();
+    return BMDModernIsSelectedRemoteRolloutObject(current);
 }
 
 bool BMDModernLegacyCullSuppressed()
