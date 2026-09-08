@@ -1,0 +1,99 @@
+[ModernBMD] build-head=059190c1b185df31b7d326176d3be1789d808a22; build-mode=Rebuild; sha256=f2e1ece47db8422d0b404e386ed142ac02da9f26c86a93321c987430e09db326
+[ModernBMD] ExperimentalBMD=1; atlas runtime enabled (AtlasMode=1, UseGeneratedShaders=1, SkeletonEncoding=Matrix4x4, MinBones=20, MinActions=2, AtlasMaxPoses=32, TargetName=<any>, Diagnostics=1)
+[ModernBMD] AtlasMode uses captured bone palettes; MinActions is ignored so animated player equipment with one local action can participate
+[ModernBMD] Matrix4x4 skeleton encoding selected for compatibility; QPS remains available with MatrixSkeleton=0
+[ModernBMD] material coherence guard active: object has legacy overlay/pass; keeping complete flush on legacy renderer to prevent mixed-depth flashing
+[ModernBMD] remote-rollout isolation: skipping modern PrepareBatch for non-selected render scope model=Data2\Object78\chowall_08.SMD commands=1 paletteBones=1
+[ModernBMD] remote-rollout isolation: skipping modern PrepareBatch for non-selected render scope model=Data2\Object78\chowall_09.SMD commands=1 paletteBones=1
+[ModernBMD] remote-rollout isolation: skipping modern PrepareBatch for non-selected render scope model=Data2\Object78\chowall_09.SMD commands=1 paletteBones=1
+[ModernBMD] remote-rollout isolation: skipping modern PrepareBatch for non-selected render scope model=Data2\Object78\chowall_09.SMD commands=1 paletteBones=1
+[ModernBMD] object-instance guard: forcing legacy renderer reason=remote-class-filter object=20BA7390 kind=1 type=1087 model=F:\Project_Temp\KoreaProject\TF class=0 className=wizard classFilter=1 singleObject=1 position=(8448.2,20156.2,191.5) scale=0.9
+[ModernBMD] object-instance guard: forcing legacy renderer reason=remote-class-filter object=20BA78EC kind=1 type=1087 model=F:\Project_Temp\KoreaProject\TF class=4 className=dark-lord classFilter=1 singleObject=1 position=(8247.92,19977.1,192.5) scale=0.92
+[ModernBMD] object-instance guard: forcing legacy renderer reason=world-asset-sos3bi01 object=0A28ECA8 kind=0 type=191 model=Data2\Object52\sos3bi01.smd position=(7084.1,19485.2,899.732) scale=0.5
+[ModernBMD] object-instance guard: forcing legacy renderer reason=world-asset-sos3bi01 object=0A28EEF8 kind=0 type=191 model=Data2\Object52\sos3bi01.smd position=(8224.97,18423.4,764.731) scale=0.5
+[ModernBMD] object-instance rollout: remote-player/bot allowed to modern candidate object=20BA7E48 type=1087 class=1 className=knight classFilter=1 singleObject=1 selected=1 position=(8052.78,21875.1,217.5) scale=0.9 rollback=ForceLegacyRemotePlayers
+[ModernBMD] isolated modern draw failed: Data2\Player\Boot\male_boots_10 mesh=0 paletteBones=56 flags=0x00000002 -> draw: batch not prepared (coherence, empty atlas, or isolation skipped PrepareBatch)
+[ModernBMD] isolated modern draw failed: Data2\Player\Boot\male_boots_10 mesh=0 paletteBones=56 flags=0x00000044 -> draw: batch not prepared (coherence, empty atlas, or isolation skipped PrepareBatch)
+[ModernBMD] isolated modern draw failed: Data2\Player\Boot\male_boots_10 mesh=0 paletteBones=56 flags=0x00000048 -> draw: batch not prepared (coherence, empty atlas, or isolation skipped PrepareBatch)
+[ModernBMD] isolated modern draw failed: Data2\Player\Glove\male_gloves_ mesh=0 paletteBones=56 flags=0x00000002 -> draw: batch not prepared (coherence, empty atlas, or isolation skipped PrepareBatch)
+[ModernBMD] isolated modern draw failed: Data2\Player\Glove\male_gloves_ mesh=0 paletteBones=56 flags=0x00000044 -> draw: batch not prepared (coherence, empty atlas, or isolation skipped PrepareBatch)
+[ModernBMD] isolated modern draw failed: Data2\Player\Glove\male_gloves_ mesh=0 paletteBones=56 flags=0x00000048 -> draw: batch not prepared (coherence, empty atlas, or isolation skipped PrepareBatch)
+[ModernBMD] isolated modern draw failed: Data2\Player\Pant\male_lower_10 mesh=0 paletteBones=56 flags=0x00000002 -> draw: batch not prepared (coherence, empty atlas, or isolation skipped PrepareBatch)
+[ModernBMD] isolated modern draw failed: Data2\Player\Pant\male_lower_10 mesh=0 paletteBones=56 flags=0x00000044 -> draw: batch not prepared (coherence, empty atlas, or isolation skipped PrepareBatch)
+[ModernBMD] object-instance guard: forcing legacy renderer reason=npc/monster object=20BA83A4 kind=2 type=703 model=D:\Projects\_work\½Å±Ô¸Ê_¸ó½ºÅÍ position=(8242.09,21871.7,214.816) scale=0.76
+[ModernBMD] object-instance guard: forcing legacy renderer reason=npc/monster object=20BA6E34 kind=2 type=705 model=D:\Projects\_work\½Å±Ô¸Ê_¸ó½ºÅÍ position=(6043.1,19138.3,169.34) scale=0.88
+[ModernBMD] object-instance guard: forcing legacy renderer reason=npc/monster object=20BA93B8 kind=2 type=704 model=D:\Projects\_work\½Å±Ô¸Ê_¸ó½ºÅÍ position=(5844.27,19098.7,208.404) scale=0.95
+[ModernBMD] object-instance guard: forcing legacy renderer reason=remote-class-filter object=20BA7E48 kind=1 type=1087 model=F:\Project_Temp\KoreaProject\TF class=2 className=elf classFilter=1 singleObject=1 position=(23019,15443,30) scale=0.88
+[ModernBMD] remote-rollout isolation: selected remote object went stale; allowing reselection object=20BA7E48 kind=1 live=0
+[ModernBMD] legacy double-sided override active for merchant_f type=975 model=Data2\Npc\merchant_f.smd reason=one-sided-clothing-cull
+[ModernBMD] object-instance rollout: remote-player/bot allowed to modern candidate object=20BA7390 type=1087 class=1 className=knight classFilter=1 singleObject=1 selected=1 position=(17050,11950,183) scale=0.9 rollback=ForceLegacyRemotePlayers
+[ModernBMD] remote-rollout isolation: PrepareBatch allowed for selected render scope model=Data2\Player\Boot\class2_02.smd commands=5 paletteBones=51
+[ModernBMD] generated OpenGL models/texture shader ready (source contract: vulkan-main HLSL -> opengl-main GLSL, skeleton=matrix4x4)
+[ModernBMD] generated-shader transform split uses immutable RenderMeshVAO snapshots; mutable BMD BodyScale/BodyOrigin are not read during flush
+[ModernBMD] skeleton atlas uploaded once for batch: model=Data2\Player\Boot\class2_02.smd poses=5 bones=255 reused=0 commands=5 shader=generated encoding=matrix4x4 texelsPerBone=4
+[ModernBMD] multi-pose skeleton atlas observed: poses=5 bones=255 (single BonesTexture upload, encoding=matrix4x4)
+[ModernBMD] mesh bone scan: srcVertices=70 triangles=114 corners=342 outVertices=90 indices=342 minBone=4 maxBone=12 negativeBoneRefs=0 invalidVertexRefs=0 invalidTexcoordRefs=0 invalidNormalRefs=0
+[ModernBMD] atlas modern BMD selected: Data2\Player\Boot\class2_02.smd (bones=51, actions=1, mesh=0, texture=30504, BaseBone=0, action=0, frame=0.000, shader=generated, encoding=matrix4x4, translate=1, bodyScale=0.900)
+[ModernBMD] mesh bone scan: srcVertices=72 triangles=130 corners=390 outVertices=106 indices=390 minBone=27 maxBone=39 negativeBoneRefs=0 invalidVertexRefs=0 invalidTexcoordRefs=0 invalidNormalRefs=0
+[ModernBMD] mesh bone scan: srcVertices=61 triangles=102 corners=306 outVertices=87 indices=306 minBone=2 maxBone=49 negativeBoneRefs=0 invalidVertexRefs=0 invalidTexcoordRefs=0 invalidNormalRefs=0
+[ModernBMD] mesh bone scan: srcVertices=70 triangles=120 corners=360 outVertices=94 indices=360 minBone=2 maxBone=36 negativeBoneRefs=0 invalidVertexRefs=0 invalidTexcoordRefs=0 invalidNormalRefs=0
+[ModernBMD] mesh bone scan: srcVertices=80 triangles=118 corners=354 outVertices=85 indices=354 minBone=18 maxBone=20 negativeBoneRefs=0 invalidVertexRefs=0 invalidTexcoordRefs=0 invalidNormalRefs=0
+[ModernBMD] object-instance guard: forcing legacy renderer reason=npc/monster object=20BA8900 kind=4 type=1087 model=F:\Project_Temp\KoreaProject\TF position=(16750,11850,181.5) scale=1
+[ModernBMD] atlas animated pose change observed: Data2\Player\Boot\class2_02.smd (draw=6, action=0, frame=0.000, encoding=matrix4x4)
+[ModernBMD] object-instance rollout: remote-player/bot allowed to modern candidate object=20BA6E34 type=1087 class=1 className=knight classFilter=1 singleObject=1 selected=1 position=(19850,7650,233.25) scale=0.9 rollback=ForceLegacyRemotePlayers
+[ModernBMD] object-instance guard: forcing legacy renderer reason=npc/monster object=20BA8E5C kind=2 type=602 model=Data2\Monster\±×¸²ÀÚ.smd position=(21592.6,6543.89,172.511) scale=1.2
+[ModernBMD] object-instance guard: forcing legacy renderer reason=remote-class-filter object=08D97DE8 kind=1 type=175 model=Data2\Object1\Animal\butterfly.s
+ class=-1 className=unknown classFilter=1 singleObject=1 position=(18592,17801.5,286.897) scale=0.9
+[ModernBMD] object-instance guard: forcing legacy renderer reason=remote-class-filter object=08D97B98 kind=1 type=175 model=Data2\Object1\Animal\butterfly.s
+ class=-1 className=unknown classFilter=1 singleObject=1 position=(18592,17801.5,286.897) scale=0.9
+[ModernBMD] object-instance guard: forcing legacy renderer reason=remote-class-filter object=08D98038 kind=1 type=175 model=Data2\Object1\Animal\butterfly.s
+ class=-1 className=unknown classFilter=1 singleObject=1 position=(18592,17801.5,286.897) scale=0.9
+[ModernBMD] object-instance guard: forcing legacy renderer reason=remote-class-filter object=08D98288 kind=1 type=175 model=Data2\Object1\Animal\butterfly.s
+ class=-1 className=unknown classFilter=1 singleObject=1 position=(18592,17801.5,286.897) scale=0.9
+[ModernBMD] ExperimentalBMD=1; atlas runtime enabled (AtlasMode=1, UseGeneratedShaders=1, SkeletonEncoding=Matrix4x4, MinBones=20, MinActions=2, AtlasMaxPoses=32, TargetName=<any>, Diagnostics=1)
+[ModernBMD] AtlasMode uses captured bone palettes; MinActions is ignored so animated player equipment with one local action can participate
+[ModernBMD] Matrix4x4 skeleton encoding selected for compatibility; QPS remains available with MatrixSkeleton=0
+[ModernBMD] material coherence guard active: object has legacy overlay/pass; keeping complete flush on legacy renderer to prevent mixed-depth flashing
+[ModernBMD] remote-rollout isolation: skipping modern PrepareBatch for non-selected render scope model=Data2\Object78\chowall_06.SMD commands=1 paletteBones=1
+[ModernBMD] remote-rollout isolation: skipping modern PrepareBatch for non-selected render scope model=Data2\Object78\chowall_05.SMD commands=1 paletteBones=1
+[ModernBMD] remote-rollout isolation: skipping modern PrepareBatch for non-selected render scope model=Data2\Object78\chowall_08.SMD commands=1 paletteBones=1
+[ModernBMD] remote-rollout isolation: skipping modern PrepareBatch for non-selected render scope model=Data2\Object78\chowall_05.SMD commands=1 paletteBones=1
+[ModernBMD] object-instance guard: forcing legacy renderer reason=world-asset-sos3bi01 object=0A28ECA8 kind=0 type=191 model=Data2\Object52\sos3bi01.smd position=(4187.84,17786.7,800.315) scale=0.5
+[ModernBMD] object-instance rollout: remote-player/bot allowed to modern candidate object=20BC9660 type=1087 class=1 className=knight classFilter=1 singleObject=1 selected=1 position=(5974.62,18784.1,188.48) scale=0.9 rollback=ForceLegacyRemotePlayers
+[ModernBMD] isolated modern draw failed: \\100.20.1.1\Project1\GameData\ mesh=0 paletteBones=51 flags=0x00000002 -> draw: batch not prepared (coherence, empty atlas, or isolation skipped PrepareBatch)
+[ModernBMD] isolated modern draw failed: \\100.20.1.1\Project1\GameData\ mesh=0 paletteBones=51 flags=0x00001040 -> draw: batch not prepared (coherence, empty atlas, or isolation skipped PrepareBatch)
+[ModernBMD] isolated modern draw failed: \\100.20.1.1\Project1\GameData\ mesh=0 paletteBones=51 flags=0x00000048 -> draw: batch not prepared (coherence, empty atlas, or isolation skipped PrepareBatch)
+[ModernBMD] isolated modern draw failed: \\100.20.1.1\Project1\GameData\ mesh=0 paletteBones=51 flags=0x00000044 -> draw: batch not prepared (coherence, empty atlas, or isolation skipped PrepareBatch)
+[ModernBMD] isolated modern draw failed: \\100.20.1.1\Project1\GameData\ mesh=0 paletteBones=51 flags=0x00000002 -> draw: batch not prepared (coherence, empty atlas, or isolation skipped PrepareBatch)
+[ModernBMD] isolated modern draw failed: \\100.20.1.1\Project1\GameData\ mesh=0 paletteBones=51 flags=0x00001040 -> draw: batch not prepared (coherence, empty atlas, or isolation skipped PrepareBatch)
+[ModernBMD] isolated modern draw failed: \\100.20.1.1\Project1\GameData\ mesh=0 paletteBones=51 flags=0x00000048 -> draw: batch not prepared (coherence, empty atlas, or isolation skipped PrepareBatch)
+[ModernBMD] isolated modern draw failed: \\100.20.1.1\Project1\GameData\ mesh=0 paletteBones=51 flags=0x00000044 -> draw: batch not prepared (coherence, empty atlas, or isolation skipped PrepareBatch)
+[ModernBMD] object-instance guard: forcing legacy renderer reason=npc/monster object=20BC9BBC kind=2 type=704 model=D:\Projects\_work\½Å±Ô¸Ê_¸ó½ºÅÍ position=(5844.27,19098.7,208.404) scale=0.95
+[ModernBMD] object-instance guard: forcing legacy renderer reason=world-asset-sos3bi01 object=0A28EEF8 kind=0 type=191 model=Data2\Object52\sos3bi01.smd position=(4579.35,19527.2,829.76) scale=0.5
+[ModernBMD] object-instance guard: forcing legacy renderer reason=npc/monster object=20BC8BA8 kind=2 type=707 model=D:\Projects\_work\½Å±Ô¸Ê_¸ó½ºÅÍ position=(2647.82,18099.1,382.5) scale=0.1615
+[ModernBMD] object-instance guard: forcing legacy renderer reason=remote-class-filter object=20BC9104 kind=1 type=1087 model=F:\Project_Temp\KoreaProject\TF class=4 className=dark-lord classFilter=1 singleObject=1 position=(22840,15355,30) scale=0.92
+[ModernBMD] object-instance guard: forcing legacy renderer reason=remote-class-filter object=20BC9660 kind=1 type=1087 model=F:\Project_Temp\KoreaProject\TF class=2 className=elf classFilter=1 singleObject=1 position=(23019,15443,30) scale=0.88
+[ModernBMD] remote-rollout isolation: selected remote object went stale; allowing reselection object=20BC9660 kind=4 live=1
+[ModernBMD] object-instance guard: forcing legacy renderer reason=npc/monster object=20BC864C kind=4 type=976 model=Data2\Npc\merchant.smd position=(12550,14650,165) scale=0.9
+[ModernBMD] legacy double-sided override active for merchant_f type=975 model=Data2\Npc\merchant_f.smd reason=one-sided-clothing-cull
+[ModernBMD] remote-rollout isolation: PrepareBatch allowed for selected render scope model=Data2\Player\Boot\class2_02.smd commands=5 paletteBones=51
+[ModernBMD] generated OpenGL models/texture shader ready (source contract: vulkan-main HLSL -> opengl-main GLSL, skeleton=matrix4x4)
+[ModernBMD] generated-shader transform split uses immutable RenderMeshVAO snapshots; mutable BMD BodyScale/BodyOrigin are not read during flush
+[ModernBMD] skeleton atlas uploaded once for batch: model=Data2\Player\Boot\class2_02.smd poses=5 bones=255 reused=0 commands=5 shader=generated encoding=matrix4x4 texelsPerBone=4
+[ModernBMD] multi-pose skeleton atlas observed: poses=5 bones=255 (single BonesTexture upload, encoding=matrix4x4)
+[ModernBMD] mesh bone scan: srcVertices=70 triangles=114 corners=342 outVertices=90 indices=342 minBone=4 maxBone=12 negativeBoneRefs=0 invalidVertexRefs=0 invalidTexcoordRefs=0 invalidNormalRefs=0
+[ModernBMD] atlas modern BMD selected: Data2\Player\Boot\class2_02.smd (bones=51, actions=1, mesh=0, texture=30504, BaseBone=0, action=0, frame=0.000, shader=generated, encoding=matrix4x4, translate=1, bodyScale=0.900)
+[ModernBMD] mesh bone scan: srcVertices=72 triangles=130 corners=390 outVertices=106 indices=390 minBone=27 maxBone=39 negativeBoneRefs=0 invalidVertexRefs=0 invalidTexcoordRefs=0 invalidNormalRefs=0
+[ModernBMD] mesh bone scan: srcVertices=61 triangles=102 corners=306 outVertices=87 indices=306 minBone=2 maxBone=49 negativeBoneRefs=0 invalidVertexRefs=0 invalidTexcoordRefs=0 invalidNormalRefs=0
+[ModernBMD] mesh bone scan: srcVertices=70 triangles=120 corners=360 outVertices=94 indices=360 minBone=2 maxBone=36 negativeBoneRefs=0 invalidVertexRefs=0 invalidTexcoordRefs=0 invalidNormalRefs=0
+[ModernBMD] mesh bone scan: srcVertices=80 triangles=118 corners=354 outVertices=85 indices=354 minBone=18 maxBone=20 negativeBoneRefs=0 invalidVertexRefs=0 invalidTexcoordRefs=0 invalidNormalRefs=0
+[ModernBMD] atlas animated pose change observed: Data2\Player\Boot\class2_02.smd (draw=6, action=0, frame=0.000, encoding=matrix4x4)
+[ModernBMD] object-instance guard: forcing legacy renderer reason=npc/monster object=20BCA118 kind=4 type=1087 model=F:\Project_Temp\KoreaProject\TF position=(13250,16550,165) scale=1
+[ModernBMD] object-instance guard: forcing legacy renderer reason=npc/monster object=20BCA674 kind=2 type=578 model=Data2\Monster\ma.smd position=(14246.7,17953,165) scale=0.85
+[ModernBMD] object-instance rollout: remote-player/bot allowed to modern candidate object=20BC864C type=1087 class=1 className=knight classFilter=1 singleObject=1 selected=1 position=(16550,12950,165) scale=0.9 rollback=ForceLegacyRemotePlayers
+[ModernBMD] object-instance rollout: remote-player/bot allowed to modern candidate object=20BC9BBC type=1087 class=1 className=knight classFilter=1 singleObject=1 selected=1 position=(16550,12950,165) scale=0.9 rollback=ForceLegacyRemotePlayers
+[ModernBMD] object-instance rollout: remote-player/bot allowed to modern candidate object=20BC8BA8 type=1087 class=1 className=knight classFilter=1 singleObject=1 selected=1 position=(13250,9750,165) scale=0.9 rollback=ForceLegacyRemotePlayers
+[ModernBMD] object-instance guard: forcing legacy renderer reason=npc/monster object=20BCB688 kind=2 type=574 model=Data2\Monster\sc.smd position=(13857.4,8041.57,173.777) scale=0.8
+[ModernBMD] object-instance guard: forcing legacy renderer reason=npc/monster object=20BCABD0 kind=2 type=574 model=Data2\Monster\sc.smd position=(14050,7950,165) scale=0.8
+[ModernBMD] object-instance guard: forcing legacy renderer reason=npc/monster object=20BCB12C kind=2 type=574 model=Data2\Monster\sc.smd position=(13953.3,7746.71,167.056) scale=0.8
+[ModernBMD] object-instance guard: forcing legacy renderer reason=npc/monster object=20BCBBE4 kind=2 type=574 model=Data2\Monster\sc.smd position=(13753,8052.97,179.002) scale=0.8

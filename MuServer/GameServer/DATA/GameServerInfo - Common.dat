@@ -135,22 +135,22 @@ ElfBufferDefenseConstB = 3
 ;==================================================
 ; Experience Settings
 ;==================================================
-AddExperienceRate_AL0 = 1000
-AddExperienceRate_AL1 = 1000
-AddExperienceRate_AL2 = 1000
-AddExperienceRate_AL3 = 1000
-AddMasterExperienceRate_AL0 = 100
-AddMasterExperienceRate_AL1 = 100
-AddMasterExperienceRate_AL2 = 100
-AddMasterExperienceRate_AL3 = 100
+AddExperienceRate_AL0 = 150
+AddExperienceRate_AL1 = 200
+AddExperienceRate_AL2 = 200
+AddExperienceRate_AL3 = 200
+AddMasterExperienceRate_AL0 = 50
+AddMasterExperienceRate_AL1 = 50
+AddMasterExperienceRate_AL2 = 50
+AddMasterExperienceRate_AL3 = 50
 MinMasterExperienceMonsterLevel_AL0 = 95
 MinMasterExperienceMonsterLevel_AL1 = 95
 MinMasterExperienceMonsterLevel_AL2 = 95
 MinMasterExperienceMonsterLevel_AL3 = 95
-AddEventExperienceRate_AL0 = 1000
-AddEventExperienceRate_AL1 = 1000
-AddEventExperienceRate_AL2 = 1000
-AddEventExperienceRate_AL3 = 1000
+AddEventExperienceRate_AL0 = 200
+AddEventExperienceRate_AL1 = 200
+AddEventExperienceRate_AL2 = 200
+AddEventExperienceRate_AL3 = 200
 
 ;==================================================
 ; Item Drop Settings
