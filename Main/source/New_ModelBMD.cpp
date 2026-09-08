@@ -782,9 +782,10 @@ void CGMMeshShader::FlushAllMesh()
 	OGL330MODEL::BeginUniformBatch();
 
 	// Keep the full object flush on one renderer whenever an unsupported overlay
-	// remains. The current parity pack admits base/bright texture plus Matrix4x4
-	// Chrome01, Chrome4 and Metal bright passes. Every other material still forces
-	// the complete flush through legacy to avoid mixed-depth flashing.
+	// remains. Chrome4 is currently admitted only for zero BlendUV, where its
+	// immutable phase values can be safely aliased through the Chrome01 runtime
+	// program. Texture|Bright remains legacy until its alpha-cutoff semantics are
+	// represented explicitly in ModernBMD rather than masked away.
 	static const bool matrixSkeleton =
 		GetPrivateProfileIntA("ModernRenderer", "MatrixSkeleton", 1,
 			".\\Data\\Custom\\config.ini") != 0;
@@ -801,9 +802,8 @@ void CGMMeshShader::FlushAllMesh()
 			modernScopeAllowed = false;
 
 		const int flagsNoDepth = command.m_FlagRender & ~RENDER_NODEPTH;
-		const bool textureFamily =
-			(flagsNoDepth == RENDER_TEXTURE ||
-			 flagsNoDepth == (RENDER_TEXTURE | RENDER_BRIGHT)) &&
+		const bool baseTexture =
+			flagsNoDepth == RENDER_TEXTURE &&
 			command.m_meshUV.x == 0.0f &&
 			command.m_meshUV.y == 0.0f &&
 			command.m_meshUV.z == 0.0f;
@@ -812,12 +812,13 @@ void CGMMeshShader::FlushAllMesh()
 			flagsNoDepth == (RENDER_CHROME | RENDER_BRIGHT);
 		const bool chrome4Bright =
 			matrixSkeleton &&
-			flagsNoDepth == (RENDER_CHROME4 | RENDER_BRIGHT);
+			flagsNoDepth == (RENDER_CHROME4 | RENDER_BRIGHT) &&
+			command.m_meshUV.x == 0.0f && command.m_meshUV.y == 0.0f;
 		const bool metalBright =
 			matrixSkeleton &&
 			flagsNoDepth == (RENDER_METAL | RENDER_BRIGHT);
 
-		if (!textureFamily && !chromeBright && !chrome4Bright && !metalBright)
+		if (!baseTexture && !chromeBright && !chrome4Bright && !metalBright)
 		{
 			modernBatchCompatible = false;
 			break;
@@ -847,7 +848,28 @@ void CGMMeshShader::FlushAllMesh()
 					<< "\n";
 			}
 		}
-		modernBatchPrepared = gBMDModernRuntime.PrepareBatch(m_Data);
+
+		// PrepareBatch performs material eligibility before staging a pose. Feed it
+		// the same immutable Chrome4 compatibility view used by CGMShaderBMD::Render
+		// so a Chrome4-only batch still gets its skeleton pose into the atlas. The
+		// shared_ptr palette identity is preserved by the vector copy, therefore
+		// TryRender can find the exact submission later using the original command.
+		MeshVAO modernPrepareCommands = m_Data;
+		for (MeshVAO::iterator prep = modernPrepareCommands.begin();
+			 prep != modernPrepareCommands.end(); ++prep)
+		{
+			const int prepFlagsNoDepth = prep->m_FlagRender & ~RENDER_NODEPTH;
+			if (prepFlagsNoDepth == (RENDER_CHROME4 | RENDER_BRIGHT) &&
+				prep->m_meshUV.x == 0.0f && prep->m_meshUV.y == 0.0f)
+			{
+				prep->m_FlagRender =
+					(prep->m_FlagRender & RENDER_NODEPTH) | RENDER_CHROME | RENDER_BRIGHT;
+				prep->m_lightPosition.x = prep->m_setting1.x;
+				prep->m_lightPosition.y = prep->m_setting1.y;
+				prep->m_lightPosition.z = prep->m_setting1.w;
+			}
+		}
+		modernBatchPrepared = gBMDModernRuntime.PrepareBatch(modernPrepareCommands);
 	}
 	else if (gBMDModernRuntime.IsEnabled() && !modernBatchCompatible)
 	{
@@ -857,7 +879,7 @@ void CGMMeshShader::FlushAllMesh()
 			coherenceGuardLogged = true;
 			std::ofstream logFile("Data\\ModernBMD.log", std::ios::out | std::ios::app);
 			if (logFile.is_open())
-				logFile << "[ModernBMD] material coherence guard active: unsupported overlay/pass remains; modern parity currently texture/bright + Matrix4x4 Chrome01/Chrome4/Metal bright, so complete flush stays legacy\n";
+				logFile << "[ModernBMD] material coherence guard active: unsupported overlay/pass remains; modern parity currently texture + Matrix4x4 Chrome01/Chrome4(zero-UV)/Metal bright, so complete flush stays legacy\n";
 		}
 	}
 	else if (gBMDModernRuntime.IsEnabled() && modernBatchCompatible && !modernScopeAllowed)
