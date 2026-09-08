@@ -6,6 +6,10 @@ OpenGLBMDModernBindings::OpenGLBMDModernBindings()
     : m_Program(0)
     , m_MaterialSamplerLocation(-1)
     , m_SkeletonSamplerLocation(-1)
+    , m_Bound(false)
+    , m_PreviousActiveTexture(GL_TEXTURE0)
+    , m_PreviousMaterialTexture(0)
+    , m_PreviousSkeletonTexture(0)
 {
 }
 
@@ -45,30 +49,49 @@ bool OpenGLBMDModernBindings::Bind(
     const OpenGLSkeletonTexture& skeletonTexture) const
 {
     if (m_Program == 0 || m_SkeletonSamplerLocation < 0 ||
-        skeletonTexture.GetTextureId() == 0)
+        skeletonTexture.GetTextureId() == 0 || m_Bound)
         return false;
 
-    GLint previousActiveTexture = GL_TEXTURE0;
-    glGetIntegerv(GL_ACTIVE_TEXTURE, &previousActiveTexture);
+    // Capture the exact legacy texture state before taking ownership of units
+    // 0 and 1. The old implementation only remembered the active unit and then
+    // unbound both textures to zero. That prevented modern-state leakage, but it
+    // could also destroy bindings that the legacy renderer expected to survive.
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &m_PreviousActiveTexture);
 
+    GLint previousBinding = 0;
+    glActiveTexture(GL_TEXTURE0 + MaterialTextureUnit);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousBinding);
+    m_PreviousMaterialTexture = static_cast<unsigned int>(previousBinding);
     if (m_MaterialSamplerLocation >= 0)
-    {
-        glActiveTexture(GL_TEXTURE0 + MaterialTextureUnit);
         glBindTexture(GL_TEXTURE_2D, materialTexture);
-    }
 
-    skeletonTexture.Bind(SkeletonTextureUnit);
-    glActiveTexture(static_cast<GLenum>(previousActiveTexture));
+    glActiveTexture(GL_TEXTURE0 + SkeletonTextureUnit);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousBinding);
+    m_PreviousSkeletonTexture = static_cast<unsigned int>(previousBinding);
+    glBindTexture(GL_TEXTURE_2D, skeletonTexture.GetTextureId());
+
+    glActiveTexture(static_cast<GLenum>(m_PreviousActiveTexture));
+    m_Bound = true;
     return true;
 }
 
 void OpenGLBMDModernBindings::Unbind() const
 {
-    GLint previousActiveTexture = GL_TEXTURE0;
-    glGetIntegerv(GL_ACTIVE_TEXTURE, &previousActiveTexture);
+    if (!m_Bound)
+        return;
+
+    // Restore rather than clear. This gives the modern pass strict ownership
+    // of its temporary bindings without making assumptions about legacy state.
     glActiveTexture(GL_TEXTURE0 + SkeletonTextureUnit);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    glActiveTexture(static_cast<GLenum>(previousActiveTexture));
+    glBindTexture(GL_TEXTURE_2D, m_PreviousSkeletonTexture);
+
+    glActiveTexture(GL_TEXTURE0 + MaterialTextureUnit);
+    glBindTexture(GL_TEXTURE_2D, m_PreviousMaterialTexture);
+
+    glActiveTexture(static_cast<GLenum>(m_PreviousActiveTexture));
+
+    m_PreviousActiveTexture = GL_TEXTURE0;
+    m_PreviousMaterialTexture = 0;
+    m_PreviousSkeletonTexture = 0;
+    m_Bound = false;
 }
