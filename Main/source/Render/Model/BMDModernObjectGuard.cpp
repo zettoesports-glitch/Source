@@ -20,6 +20,38 @@ namespace
     const OBJECT* g_SelectedRemoteObject = NULL;
     std::vector<const OBJECT*> g_RenderScopeStack;
 
+    bool IsRemotePlayerLikeObject(const OBJECT* object)
+    {
+        return object != NULL &&
+               object->Kind == KIND_PLAYER &&
+               Hero != NULL &&
+               object != &Hero->Object;
+    }
+
+    bool ForceLegacyRemotePlayers()
+    {
+        static const bool value =
+            GetPrivateProfileIntA("ModernRenderer", "ForceLegacyRemotePlayers", 1,
+                                  ".\\Data\\Custom\\config.ini") != 0;
+        return value;
+    }
+
+    int RemotePlayerClassFilter()
+    {
+        static const int value =
+            GetPrivateProfileIntA("ModernRenderer", "RemotePlayerClass", -1,
+                                  ".\\Data\\Custom\\config.ini");
+        return value;
+    }
+
+    bool RemotePlayerSingleObject()
+    {
+        static const bool value =
+            GetPrivateProfileIntA("ModernRenderer", "RemotePlayerSingleObject", 1,
+                                  ".\\Data\\Custom\\config.ini") != 0;
+        return value;
+    }
+
     bool IsStaleSelectedRemoteObject(const OBJECT* object)
     {
         if (object == NULL)
@@ -81,6 +113,30 @@ namespace
         // CharacterManager::GetBaseClass() is Class & 0x7. Keep this guard
         // dependency-light while preserving promoted-class compatibility.
         return static_cast<int>(character->Class) & 0x7;
+    }
+
+    bool RemoteClassAllowed(const OBJECT* object)
+    {
+        if (!IsRemotePlayerLikeObject(object) || ForceLegacyRemotePlayers())
+            return false;
+
+        const int classFilter = RemotePlayerClassFilter();
+        if (classFilter < 0)
+            return true;
+
+        return GetRemoteBaseClass(object) == classFilter;
+    }
+
+    bool RemoteObjectAllowedByIsolation(const OBJECT* object)
+    {
+        if (!RemoteClassAllowed(object))
+            return false;
+
+        if (!RemotePlayerSingleObject())
+            return true;
+
+        ClearSelectedRemoteIfStale();
+        return g_SelectedRemoteObject != NULL && object == g_SelectedRemoteObject;
     }
 
     const char* RemoteBaseClassName(int baseClass)
@@ -167,8 +223,7 @@ bool BMDModernAllowModernForCurrentRenderScope()
     if (g_RenderScopeStack.empty())
         return false;
 
-    const OBJECT* current = g_RenderScopeStack.back();
-    return BMDModernIsSelectedRemoteRolloutObject(current);
+    return RemoteObjectAllowedByIsolation(g_RenderScopeStack.back());
 }
 
 bool BMDModernAllowModernForCommand(const OBJECT* owner)
@@ -181,11 +236,10 @@ bool BMDModernAllowModernForCommand(const OBJECT* owner)
 
     // A queued draw already carries the OBJECT that owned it when the command
     // was recorded. Do not consult the mutable render-scope stack here: flushes
-    // can happen after a nested scope has popped or changed. This follows the
-    // explicit per-draw state ownership used by the Core Profile renderer and
-    // prevents a valid selected remote from losing its modern batch merely
-    // because the current stack no longer points at that object.
-    return BMDModernIsSelectedRemoteRolloutObject(owner);
+    // can happen after a nested scope has popped or changed. In single-object
+    // mode we still require the selected OBJECT. In multi-object mode every live
+    // remote player that passes the class/rollback filter owns its own commands.
+    return RemoteObjectAllowedByIsolation(owner);
 }
 
 bool BMDModernLegacyCullSuppressed()
@@ -259,26 +313,17 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
     if (object == NULL)
         return false;
 
-    const bool isRemotePlayerLike =
-        object->Kind == KIND_PLAYER &&
-        Hero != NULL &&
-        object != &Hero->Object;
-
+    const bool isRemotePlayerLike = IsRemotePlayerLikeObject(object);
     const bool legacySos3Bi01WorldAsset = IsSos3Bi01LegacyWorldAsset(object);
 
     // Safe default remains legacy. ForceLegacyRemotePlayers=0 explicitly opens
-    // the diagnostic rollout. RemotePlayerClass then allows only one base class
-    // (-1 = any; 0 wizard, 1 knight/BK, 2 elf), and RemotePlayerSingleObject=1
-    // keeps only the first matching live OBJECT on the modern candidate path.
-    static const bool forceLegacyRemotePlayers =
-        GetPrivateProfileIntA("ModernRenderer", "ForceLegacyRemotePlayers", 1,
-                              ".\\Data\\Custom\\config.ini") != 0;
-    static const int remotePlayerClass =
-        GetPrivateProfileIntA("ModernRenderer", "RemotePlayerClass", -1,
-                              ".\\Data\\Custom\\config.ini");
-    static const bool remotePlayerSingleObject =
-        GetPrivateProfileIntA("ModernRenderer", "RemotePlayerSingleObject", 1,
-                              ".\\Data\\Custom\\config.ini") != 0;
+    // the diagnostic rollout. RemotePlayerClass allows one base class when >= 0
+    // or every base class when -1. RemotePlayerSingleObject=1 keeps one matching
+    // live OBJECT; =0 admits every matching remote player with per-command owner
+    // isolation while NPC/monster remain quarantined below.
+    const bool forceLegacyRemotePlayers = ForceLegacyRemotePlayers();
+    const int remotePlayerClass = RemotePlayerClassFilter();
+    const bool remotePlayerSingleObject = RemotePlayerSingleObject();
 
     const int remoteBaseClass = isRemotePlayerLike ? GetRemoteBaseClass(object) : -1;
     const bool remoteClassRejected =
@@ -311,7 +356,7 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
         if (isRemotePlayerLike)
         {
             static std::unordered_set<const OBJECT*> loggedModernRemoteObjects;
-            if (loggedModernRemoteObjects.size() < 8u &&
+            if (loggedModernRemoteObjects.size() < 16u &&
                 loggedModernRemoteObjects.insert(object).second)
             {
                 std::ofstream logFile("Data\\ModernBMD.log", std::ios::out | std::ios::app);
