@@ -107,28 +107,7 @@ void CGMShaderBMD::Render(OGL330MODEL::RenderMeshVAO& r)
 		BMDModernAllowModernForCommand(r.m_Owner) && gBMDModernRuntime.IsEnabled();
 	if (modernAttempt)
 	{
-		// Chrome4 uses the same material texture/skeleton plumbing as Chrome01,
-		// but a different UV formula. Keep the original render flags for GL blend
-		// state above, then present an immutable compatibility view to ModernBMD:
-		// - flags alias to CHROME|BRIGHT so the current runtime accepts it;
-		// - setting1.z==1.0 becomes the shader's Chrome4 sentinel via Wave.x;
-		// - captured cos/sin/wave are copied into lightPosition.xyz so the delayed
-		//   flush never recomputes animation phase from mutable WorldTime.
-		OGL330MODEL::RenderMeshVAO modernCommand = r;
-		const int flagsNoDepth = r.m_FlagRender & ~RENDER_NODEPTH;
-		const bool chrome4Alias =
-			flagsNoDepth == (RENDER_CHROME4 | RENDER_BRIGHT) &&
-			r.m_meshUV.x == 0.0f && r.m_meshUV.y == 0.0f;
-		if (chrome4Alias)
-		{
-			modernCommand.m_FlagRender =
-				(r.m_FlagRender & RENDER_NODEPTH) | RENDER_CHROME | RENDER_BRIGHT;
-			modernCommand.m_lightPosition.x = r.m_setting1.x;
-			modernCommand.m_lightPosition.y = r.m_setting1.y;
-			modernCommand.m_lightPosition.z = r.m_setting1.w;
-		}
-
-		if (gBMDModernRuntime.TryRender(modernCommand))
+		if (gBMDModernRuntime.TryRender(r))
 		{
 			OGL330MODEL::InvalidateShaderCache();
 			return;
