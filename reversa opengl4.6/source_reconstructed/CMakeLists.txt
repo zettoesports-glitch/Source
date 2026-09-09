@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(MainExeReverseGL46 LANGUAGES CXX)
 set(REVERSE_GL46_COMMON
-    core/GL46Capabilities.cpp core/GLCompatFixedState.cpp core/LegacyReachabilityAudit.cpp
+    core/GL46Capabilities.cpp core/GL46ShaderProgram.cpp core/GLCompatFixedState.cpp core/LegacyReachabilityAudit.cpp
     core/GLCorePrimitiveStream.cpp core/RendererModel.cpp core/ModelCommandQueue.cpp
     core/Renderer2DGL46.cpp core/Renderer2DBatcher.cpp core/TextSurfaceCache.cpp
     core/RendererTerrainGL46.cpp core/TerrainCommandEncoder.cpp core/RendererWaterGL46.cpp
