@@ -1,34 +1,38 @@
 # reversa opengl4.6
 
-Pacote de engenharia reversa **clean-room** do subsistema OpenGL do `Main.exe` fornecido pelo usuário. Pasta isolada do build do cliente principal; serve como golden reference para o branch `modernization`.
+Golden reference clean-room do OpenGL do `Main.exe` analisado, isolada do build principal do branch `modernization`.
 
-## Confiança
-- **EXTRACTED/CONFIRMADO**: literal em PE, import/export, string, RTTI, shader ou assembly.
-- **RECONSTRUCTED**: comportamento equivalente derivado de assembly/xrefs/telemetria.
-- **INFERRED**: estrutura limpa criada quando nomes/tipos originais não sobreviveram.
+## Para o nosso projeto, use só estes 3 blocos
 
-## Resumo confirmado
-- PE32 x86, ImageBase `0x00400000`, entry `0x00AFBCC3`, build PE 08/09/2026 09:09:32.
-- OpenGL 2 legacy / OpenGL 3.3 Compatibility / OpenGL 4.6 via `OpenGlUseShader=0/1/2`.
-- `wglCreateContextAttribsARB`; seletor `0x00470C30`, helper `0x00470D90`.
-- Capabilities GL4, DSA/buffer-storage/debug/UBO/SSBO/compute detectados; uso é documentado separadamente de mera capacidade.
-- Model/BMD: `u_Bones[200]`, FrameData UBO, Chrome 1..10, BlendMesh, fog, alpha, shadow, pose reuse, queue e opaque sort conservador.
-- 2D/UI, sky, atmosphere, water, terrain/weather, cloth/effects/joints possuem fases e telemetria próprias.
-- Exports `NvOptimusEnablement` e `AmdPowerXpressRequestHighPerformance`.
-- 1.763 xrefs diretos de `.text` para strings relevantes catalogados; 54 xrefs diretos às fases nomeadas.
+### 1. Como o OpenGL 4.6 funciona e como implementar na source
 
-## Estrutura
-- `docs/`: arquitetura, fases, offsets, deep dives e xrefs.
-- `evidence/`: imports/exports, strings indexadas, RTTI, paths, xrefs.
-- `disassembly/`: trechos x86 selecionados.
-- `shaders/extracted/`: blocos que começam em `#version`.
-- `shaders/extracted_gl46/`: fragmentos adicionais de sky/atmosphere/water/cloth/terrain preservados por offset.
-- `source_reconstructed/`: biblioteca C++17 clean-room que representa a arquitetura recuperada.
+`01_OPENGL46_SOURCE/README.md`
 
-## Validação
-A árvore `source_reconstructed/` foi validada como biblioteca C++17 independente. Isso valida a consistência da reconstrução clean-room; **não significa** que ela seja a source original do executável.
+Contém contexto/fallback, WGL, capabilities, FrameData UBO, shader manager, primitive stream, Model/BMD e ordem segura de implementação.
 
-## Limite honesto
-Um PE compilado não permite recuperar a source original 1:1: nomes locais, headers, macros, comentários perdidos e milhares de funções de gameplay não podem ser recriados exatamente. Este pacote busca esgotar o **subsistema OpenGL 4.6 recuperável** e manter toda inferência explicitamente marcada.
+### 2. O que vale portar/melhorar no nosso MU
+
+`02_MELHORIAS_PARA_MU/ROADMAP.md`
+
+Separa **PORTAR AGORA**, **PORTAR DEPOIS** e **FUTURO 4.6+**. Inclui bone scratch, pose reuse, uniform cache, batching 2D, opaque sort, terrain command encoder, text cache, particles/joints, weather e candidatos futuros como persistent mapping/MDI/SSBO/compute somente após benchmark.
+
+### 3. Shaders completos e precisos
+
+`03_SHADERS_COMPLETOS/README.md`
+
+Os shaders GL4.6 montados ficam em `shaders/complete/`. A evidência mostra que o EXE chama `glShaderSource` com 3 partes: `#version 460 core` + define do renderer + corpo GLSL. O manifesto guarda VAs de origem por programa.
+
+## Estado real de completude
+
+- **Arquitetura OpenGL 4.6 necessária para construir nosso renderer:** suficientemente fechada como referência de implementação.
+- **Shaders GL4.6 principais (2D/Sky/Atmosphere/Water/Cloth/Terrain base+weather):** reconstruídos completos em forma compilável/driver-equivalente.
+- **Model/BMD/Shadow/Compat/Lightpass/MapAtmosphere:** strings completas extraídas do PE e preservadas em `shaders/extracted/`.
+- **Biblioteca clean-room C++17:** compila no ambiente de análise.
+- **Teste real dos GLSL em driver NVIDIA/AMD/OpenGL 4.6:** deve ocorrer no nosso cliente por compile/link logs; o ambiente de análise não possui driver/compiler GLSL 4.6.
+- **Source original do Main 1:1:** impossível recuperar de um PE otimizado; nomes locais, headers e partes de integração não sobrevivem integralmente à compilação.
+
+## Princípio para o OpenGL 4.6+
+
+Primeiro fidelidade e estabilidade; depois performance. Capability detectada não significa feature obrigatória. SSBO/compute/MDI entram somente se benchmark provar ganho e houver fallback.
 
 O `Main.exe` original não é armazenado no repositório.
