@@ -23,7 +23,7 @@ void main()
     vec4 worldPos = bone * vec4(aPos, 1.0);
     vec4 viewPos = uView * worldPos;
     gl_Position = uProj * viewPos;
-    v_viewDistance = length(viewPos.xyz);
+	v_viewDistance = length(viewPos.xyz);
 
     vec3 normal = normalize(mat3(bone) * aNorm);
     v_normal = normal;

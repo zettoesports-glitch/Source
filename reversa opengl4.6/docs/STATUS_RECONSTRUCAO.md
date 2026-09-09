@@ -22,3 +22,8 @@
 ## Ainda não recuperado 1:1
 
 A source integral do jogo. O `.text` possui ~7,5 MiB de código nativo e milhares de funções. Recuperar tudo exige decompilação e validação função por função. O objetivo desta pasta é preservar o que já foi realmente demonstrado e permitir continuar a reconstrução sem adivinhações.
+
+
+## Source reference tree added
+
+`source_reconstructed/` now contains a C++17 reference library for renderer selection/context, capability representation, model queue/material/pose structures, 2D batching/text-cache model, terrain weather/footstep state, water/sky/atmosphere/cloth interfaces and legacy reachability. Files in `discovered_modules/` are evidence markers only, never fabricated implementations.
