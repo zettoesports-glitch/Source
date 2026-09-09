@@ -9,7 +9,31 @@
 - loader dinâmico por DLL/factory;
 - nomes reais `_32r` / `_64r`;
 - `MUGraphics::InitializeEngine` e source path do cliente;
-- ordem de tentativa D3D11 -> Vulkan -> D3D12 -> OpenGL.
+- ordem de tentativa D3D11 -> Vulkan -> D3D12 -> OpenGL;
+- constante real de ordem em `0x1404829C0` = `{1,5,2,3}`.
+
+### Integração NextMU -> Vulkan
+- endereço x64 de `MUGraphics::InitializeEngine`: `0x1400554C0`;
+- case Vulkan identificado em `0x140055528`;
+- loader `GraphicsEngineVk` + `GetEngineFactoryVk` confirmado por assembly;
+- Diligent API version **254000** (`0x3E030`) confirmada;
+- `EngineVkCreateInfo` initializer recuperado em `0x1400549B0`;
+- defaults exatos dos main/dynamic descriptor pools recuperados;
+- defaults exatos de memory pages/reserves, upload heap e dynamic heap recuperados;
+- defaults exatos dos query pools recuperados;
+- validation configurável via global do NextMU recuperada;
+- mensagem ignorada `UNASSIGNED-CoreValidation-Shader-OutputNotConsumed` confirmada;
+- enumeração/seleção explícita de adapter antes da criação do device confirmada;
+- `CreateDeviceAndContextsVk` via vtable `+0x50` confirmada;
+- `CreateSwapChainVk` via vtable `+0x58` confirmada;
+- globals de factory/device/swapchain identificados;
+- `SwapChainDesc` global identificado em `0x1406A7058`;
+- `BufferCount = 2`;
+- color sRGB `TEX_FORMAT_RGBA8_UNORM_SRGB (0x1D)`;
+- depth final observado `TEX_FORMAT_D32_FLOAT_S8X24_UINT (0x14)`;
+- consulta do descriptor real do swapchain após criação confirmada.
+
+Detalhes completos em `07_EXACT_NEXTMU_INIT.md`.
 
 ### Vulkan backend
 - plugin Vulkan real identificado;
@@ -57,34 +81,36 @@ Não vamos transformar capability em requisito sem xref/uso real.
 ## O que ainda NÃO está fechado 1:1
 
 - source original de `mu_graphics.cpp`;
-- valores exatos de todos os `EngineVkCreateInfo` usados pelo NextMU;
-- número exato de frames in flight;
-- tamanhos configurados de heaps/pools;
+- número efetivo de frames-in-flight do renderer do jogo além do `BufferCount=2` da swapchain;
+- se o NextMU sobrescreve algum tamanho de heap/pool após o initializer padrão em outros pontos;
 - política exata de pipeline cache;
 - lista exata de PSOs criados pelo jogo;
 - bindings específicos de cada renderer MU (model/terrain/UI/effects);
 - quais shaders DiligentFX estão efetivamente ativos em cada cena;
 - uso real de async compute/indirect/timeline semaphore;
-- revisão/commit exato do DiligentCore (a build é de janeiro/2024, mas o commit ainda não foi provado pelo binário).
+- lifecycle completo de resize/minimize/fullscreen/device recovery;
+- revisão/commit exato do DiligentCore: o binário prova API version `254000`, mas ainda não prova um commit/tag público específico.
 
 ## Definição honesta de "completo"
 
-A engenharia do **backend Vulkan/Diligent fornecido no pacote está estruturalmente mapeada**. Isso é suficiente para entender como integrar um backend equivalente e quais sistemas precisamos construir no nosso MU.
+A engenharia do **backend Vulkan/Diligent fornecido no pacote e da inicialização NextMU -> Vulkan está estruturalmente mapeada em profundidade suficiente para reproduzir uma integração equivalente**.
 
-Não é possível chamar de source original completa do NextMU: o EXE foi compilado e parte das escolhas/configurações do jogo ainda precisa de xrefs mais profundos ou source/símbolos adicionais.
+Isso não é a source original completa do NextMU. Um executável compilado não preserva todos os nomes, tipos locais, templates, comentários e organização da source.
 
 ## Próxima profundidade útil
 
-Quando formos implementar no nosso projeto, a prioridade não é decompilar cada função interna da Diligent, porque o DiligentCore é um projeto open source. O trabalho valioso é reconstruir a camada **NextMU/MU -> Diligent/Vulkan**:
+O maior valor agora é continuar reconstruindo a camada **NextMU/MU -> renderer**, não decompilar linha por linha um backend Diligent que possui source pública:
 
 ```text
+frame/present/resize
 Model renderer
 Terrain renderer
 UI/2D
 Effects
 resource bindings
 pipeline definitions
+shader selection
 frame scheduling
 ```
 
-É essa camada que deve ser comparada com nosso `modernization`.
+É essa camada que deve ser comparada com nosso `modernization` para construir Vulkan e OpenGL 4.6 com o mesmo contrato visual.
