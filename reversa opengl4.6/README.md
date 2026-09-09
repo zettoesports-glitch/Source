@@ -1,48 +1,34 @@
 # reversa opengl4.6
 
-Material de engenharia reversa estática do `Main.exe` fornecido para comparação com o branch `modernization`.
+Pacote de engenharia reversa **clean-room** do subsistema OpenGL do `Main.exe` fornecido pelo usuário. Pasta isolada do build do cliente principal; serve como golden reference para o branch `modernization`.
 
-## Importante
+## Confiança
+- **EXTRACTED/CONFIRMADO**: literal em PE, import/export, string, RTTI, shader ou assembly.
+- **RECONSTRUCTED**: comportamento equivalente derivado de assembly/xrefs/telemetria.
+- **INFERRED**: estrutura limpa criada quando nomes/tipos originais não sobreviveram.
 
-Isto **não é a source original recuperada 1:1**. Um executável C++ otimizado perde nomes locais, macros, comentários, tipos e parte da organização original. Esta pasta separa três classes de material:
-
-- **EXTRAÍDO**: bytes/texto presentes literalmente no binário, como shaders GLSL, paths de PDB/source, imports e strings.
-- **RECONSTRUÍDO**: C++/pseudocódigo derivado do assembly com comportamento preservado onde foi possível confirmar.
-- **INFERIDO**: nomes/estrutura criados para tornar a reconstrução legível; devem ser validados antes de portar ao cliente.
-
-O `Main.exe` original **não é incluído** nesta pasta.
-
-## Identidade do binário analisado
-
-- SHA-256: `dbd38a803e0d7b26d0d8f5b8b693105da12838e66ab0b0e3c93a64ac9b768d92`
-- MD5: `90b656d65e85c91d5280bb4888a3fdc9`
-- Formato: PE32 / x86 / Windows GUI
-- ImageBase: `0x00400000`
-- Entry point VA: `0x00AFBCC3`
-- Timestamp PE: `2026-09-08 09:09:32`
-- Linker: MSVC 14.29
-- PDB embutido: `C:\Genesys\x6 Plus\Src S6 Plus\SRC\Main5.2\Release_EX603\Main.pdb`
-
-## Achados principais confirmados
-
-1. Renderer selecionável por `OpenGlUseShader` no registro `SOFTWARE\Webzen\Mu2\Config`.
-2. Contrato observado: `0 = OpenGL 2 legacy`, `1 = OpenGL 3.3 Compatibility`, `2 = OpenGL 4.6`.
-3. Para modo 2, tenta contexto WGL 4.6; o perfil 4.6 pode ser Core ou Compatibility. Se necessário, há caminho 3.3 Compatibility.
-4. `OPENGL32.dll`, `GLU32.dll` e `glew32.dll` são imports reais.
-5. Recursos modernos observados: VAO/VBO, shader objects, UBO, SSBO capability, buffer storage, timer query, debug output, sampler objects, sync, instancing, multi-draw-indirect e compute-shader capability.
-6. `RendererModel` contém GPU skinning com `u_Bones[200]`, Chrome modes, BlendMesh, fog, alpha cutoff, shadow e `FrameData` UBO.
-7. Há subsistemas nomeados `Renderer2DGL46`, `RendererTerrainGL46`, `RendererClothGL46`, `RendererSkyGL46`, `RendererAtmosphereGL46` e `RendererWaterGL46`.
-8. A build contém telemetria/otimizações nomeadas `G01..G07`, `H08` e `P01`.
-9. O executável preserva diversos paths de source e shaders GLSL em texto, facilitando a reconstrução.
+## Resumo confirmado
+- PE32 x86, ImageBase `0x00400000`, entry `0x00AFBCC3`, build PE 08/09/2026 09:09:32.
+- OpenGL 2 legacy / OpenGL 3.3 Compatibility / OpenGL 4.6 via `OpenGlUseShader=0/1/2`.
+- `wglCreateContextAttribsARB`; seletor `0x00470C30`, helper `0x00470D90`.
+- Capabilities GL4, DSA/buffer-storage/debug/UBO/SSBO/compute detectados; uso é documentado separadamente de mera capacidade.
+- Model/BMD: `u_Bones[200]`, FrameData UBO, Chrome 1..10, BlendMesh, fog, alpha, shadow, pose reuse, queue e opaque sort conservador.
+- 2D/UI, sky, atmosphere, water, terrain/weather, cloth/effects/joints possuem fases e telemetria próprias.
+- Exports `NvOptimusEnablement` e `AmdPowerXpressRequestHighPerformance`.
+- 1.763 xrefs diretos de `.text` para strings relevantes catalogados; 54 xrefs diretos às fases nomeadas.
 
 ## Estrutura
+- `docs/`: arquitetura, fases, offsets, deep dives e xrefs.
+- `evidence/`: imports/exports, strings indexadas, RTTI, paths, xrefs.
+- `disassembly/`: trechos x86 selecionados.
+- `shaders/extracted/`: blocos que começam em `#version`.
+- `shaders/extracted_gl46/`: fragmentos adicionais de sky/atmosphere/water/cloth/terrain preservados por offset.
+- `source_reconstructed/`: biblioteca C++17 clean-room que representa a arquitetura recuperada.
 
-- `docs/` — análise e mapa do renderer.
-- `evidence/` — dados extraídos literalmente do PE.
-- `disassembly/` — trechos x86 relevantes com endereço virtual.
-- `shaders/extracted/` — GLSL recuperado literalmente do executável.
-- `source_reconstructed/` — C++ reconstruído/skeleton para servir como referência de port.
+## Validação
+A árvore `source_reconstructed/` foi validada como biblioteca C++17 independente. Isso valida a consistência da reconstrução clean-room; **não significa** que ela seja a source original do executável.
 
-## Regra para uso no projeto principal
+## Limite honesto
+Um PE compilado não permite recuperar a source original 1:1: nomes locais, headers, macros, comentários perdidos e milhares de funções de gameplay não podem ser recriados exatamente. Este pacote busca esgotar o **subsistema OpenGL 4.6 recuperável** e manter toda inferência explicitamente marcada.
 
-Nada desta pasta deve entrar no build automaticamente. Primeiro comparar comportamento e tipos com a source do cliente no branch `modernization`, depois portar manualmente somente o que for validado.
+O `Main.exe` original não é armazenado no repositório.
