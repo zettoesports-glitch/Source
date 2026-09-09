@@ -67,6 +67,13 @@ namespace
                object != &Hero->Object;
     }
 
+    bool IsLocalHeroObject(const OBJECT* object)
+    {
+        return object != NULL &&
+               Hero != NULL &&
+               object == &Hero->Object;
+    }
+
     bool IsNpcOrMonsterObject(const OBJECT* object)
     {
         return object != NULL &&
@@ -93,6 +100,14 @@ namespace
     {
         static const bool value =
             GetPrivateProfileIntA("ModernRenderer", "RemotePlayerSingleObject", 1,
+                                  ".\\Data\\Custom\\config.ini") != 0;
+        return value;
+    }
+
+    bool LocalHeroRolloutEnabled()
+    {
+        static const bool value =
+            GetPrivateProfileIntA("ModernRenderer", "LocalHeroRollout", 0,
                                   ".\\Data\\Custom\\config.ini") != 0;
         return value;
     }
@@ -277,7 +292,8 @@ namespace
 
     bool ObjectAllowedByIsolation(const OBJECT* object)
     {
-        return RemoteObjectAllowedByIsolation(object) ||
+        return (IsLocalHeroObject(object) && LocalHeroRolloutEnabled()) ||
+               RemoteObjectAllowedByIsolation(object) ||
                NpcMonsterObjectAllowedByIsolation(object);
     }
 
@@ -379,8 +395,8 @@ bool BMDModernAllowModernForCommand(const OBJECT* owner)
     // A queued draw already carries the OBJECT that owned it when the command
     // was recorded. Do not consult the mutable render-scope stack here: flushes
     // can happen after a nested scope has popped or changed. The same immutable
-    // owner gate now admits either the configured remote-player rollout or the
-    // configured NPC/monster type rollout.
+    // owner gate now admits the local Hero opt-in, the configured remote-player
+    // rollout, or the configured NPC/monster type rollout.
     return ObjectAllowedByIsolation(owner);
 }
 
@@ -455,19 +471,22 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
     if (object == NULL)
         return false;
 
+    const bool isLocalHero = IsLocalHeroObject(object);
     const bool isRemotePlayerLike = IsRemotePlayerLikeObject(object);
     const bool legacySos3Bi01WorldAsset = IsSos3Bi01LegacyWorldAsset(object);
 
-    // Safe default remains legacy. ForceLegacyRemotePlayers=0 explicitly opens
-    // the player rollout. NPC/monster rollout is a separate opt-in; its type
-    // filter stays mandatory while NpcMonsterSingleObject controls whether one
-    // or all live instances of that exact type are admitted.
+    // Safe default remains legacy. LocalHeroRollout explicitly opens only Hero;
+    // ForceLegacyRemotePlayers=0 opens the remote-player rollout. NPC/monster
+    // rollout remains a separate opt-in with its mandatory type filter.
+    const bool localHeroRollout = LocalHeroRolloutEnabled();
     const bool forceLegacyRemotePlayers = ForceLegacyRemotePlayers();
     const int remotePlayerClass = RemotePlayerClassFilter();
     const bool remotePlayerSingleObject = RemotePlayerSingleObject();
     const bool npcMonsterSingleObject = NpcMonsterSingleObject();
 
-    const int remoteBaseClass = isRemotePlayerLike ? GetRemoteBaseClass(object) : -1;
+    const int playerBaseClass =
+        (isLocalHero || isRemotePlayerLike) ? GetRemoteBaseClass(object) : -1;
+    const int remoteBaseClass = isRemotePlayerLike ? playerBaseClass : -1;
     const bool remoteClassRejected =
         isRemotePlayerLike && !forceLegacyRemotePlayers &&
         remotePlayerClass >= 0 && remoteBaseClass != remotePlayerClass;
@@ -481,6 +500,7 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
         remoteObjectRejected = g_SelectedRemoteObject != object;
     }
 
+    const bool localHeroRejected = isLocalHero && !localHeroRollout;
     const bool remotePlayerLike =
         isRemotePlayerLike &&
         (forceLegacyRemotePlayers || remoteClassRejected || remoteObjectRejected);
@@ -493,12 +513,38 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
 
     const bool forceLegacy =
         legacySos3Bi01WorldAsset ||
+        localHeroRejected ||
         (npcOrMonster && !npcMonsterAllowed) ||
         remotePlayerLike;
 
     if (!forceLegacy)
     {
-        if (isRemotePlayerLike)
+        if (isLocalHero)
+        {
+            static std::unordered_set<ObjectLogKey, ObjectLogKeyHash> loggedModernLocalHeroObjects;
+            const ObjectLogKey key = MakeObjectLogKey(object, playerBaseClass);
+            if (loggedModernLocalHeroObjects.insert(key).second)
+            {
+                std::ofstream logFile("Data\\ModernBMD.log", std::ios::out | std::ios::app);
+                if (logFile.is_open())
+                {
+                    logFile
+                        << "[ModernBMD] object-instance rollout: local-hero allowed to modern candidate"
+                        << " object=" << object
+                        << " kind=" << static_cast<unsigned int>(object->Kind)
+                        << " type=" << object->Type
+                        << " class=" << playerBaseClass
+                        << " className=" << RemoteBaseClassName(playerBaseClass)
+                        << " position=(" << object->Position[0]
+                        << "," << object->Position[1]
+                        << "," << object->Position[2] << ")"
+                        << " scale=" << object->Scale
+                        << " rollback=LocalHeroRollout"
+                        << "\n";
+                }
+            }
+        }
+        else if (isRemotePlayerLike)
         {
             static std::unordered_set<ObjectLogKey, ObjectLogKeyHash> loggedModernRemoteObjects;
             const ObjectLogKey key = MakeObjectLogKey(object, remoteBaseClass);
@@ -562,7 +608,11 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
     }
 
     const char* reason = legacySos3Bi01WorldAsset ? "world-asset-sos3bi01" : "npc/monster";
-    if (remotePlayerLike)
+    if (localHeroRejected)
+    {
+        reason = "local-hero-rollout-disabled";
+    }
+    else if (remotePlayerLike)
     {
         if (forceLegacyRemotePlayers)
             reason = "remote-player/bot";
@@ -584,7 +634,7 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
     // an NPC logged from a slot can hide a later player (or another model) that
     // reuses that same OBJECT storage during the same validation session.
     static std::unordered_set<ObjectLogKey, ObjectLogKeyHash> loggedObjects;
-    const ObjectLogKey key = MakeObjectLogKey(object, isRemotePlayerLike ? remoteBaseClass : -1);
+    const ObjectLogKey key = MakeObjectLogKey(object, playerBaseClass);
     if (loggedObjects.insert(key).second)
     {
         std::ofstream logFile("Data\\ModernBMD.log", std::ios::out | std::ios::app);
@@ -602,7 +652,14 @@ bool BMDModernShouldForceLegacyObject(const OBJECT* object)
                 << " type=" << object->Type
                 << " model=" << modelName;
 
-            if (isRemotePlayerLike)
+            if (isLocalHero)
+            {
+                logFile
+                    << " class=" << playerBaseClass
+                    << " className=" << RemoteBaseClassName(playerBaseClass)
+                    << " localHeroRollout=" << (localHeroRollout ? 1 : 0);
+            }
+            else if (isRemotePlayerLike)
             {
                 logFile
                     << " class=" << remoteBaseClass
