@@ -3,7 +3,9 @@
 Status: **CONFIRMADO** por assembly do `NextMU.exe` x64 e `Diligent::LayoutElement` v2.5.4.
 
 Registry de InputLayouts: global em `0x1409CA9D8`.
-Semantic padrão: `ATTRIB` (`0x1405F36A8`).
+Semantic padrão: `ATTRIB` (`0x140485F98`).
+
+> Correção forense: `0x1405F36A8` é `g_tex2DShadowMap`, não `ATTRIB`.
 
 ## mesh
 
