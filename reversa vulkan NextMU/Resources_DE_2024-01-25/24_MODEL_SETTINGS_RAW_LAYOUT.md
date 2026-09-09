@@ -1,6 +1,8 @@
-# 24 — ModelSettings 96-byte raw layout
+# 24 — ModelSettings 96-byte layout EXATO
 
-Status: **CONFIRMADO NO NÍVEL DE OFFSETS**. Nomes semânticos permanecem deliberadamente neutros onde o shader/estrutura original ainda não foi ligado ao campo.
+Status: **SOURCE-CORRELATED / CONFIRMADO**.
+
+O layout bruto recuperado por assembly foi ligado à estrutura `NModelSettings` da source histórica de 25/01/2024 e às escritas de `MUModelRenderer::RenderMesh`.
 
 Tamanho:
 
@@ -8,62 +10,66 @@ Tamanho:
 0x60 = 96 bytes
 ```
 
-## Escritas observadas
-
-```text
-0x00..0x0F : float4/vector copiado de source +0xC0
-0x10..0x1F : float4 computado durante material/light setup
-
-0x20 : uint32/dword copiado de source +0x04
-0x24 : float copiado de source +0x08
-0x28 : float copiado de source +0x0C
-0x2C : 0
-
-0x30 : float convertido de source +0x00
-0x34 : 0
-0x38 : source byte +0x14 convertido para float
-0x3C : uint32/dword de render/material state +0x48
-
-0x40 : float flag 0.0/1.0 definido por branch
-0x44 : float retornado por função 0x14007E420
-0x48 : -3000.0f (0xC53B8000)
-0x4C : 0
-
-0x50..0x57 : zero
-0x58..0x5F : padding/unused ou campos ainda sem escrita confirmada no caminho analisado
-```
-
-## Representação clean-room segura
-
-Até a semântica ser comprovada, usar nomes neutros:
+## Estrutura
 
 ```cpp
-struct ModelSettingsRaw
+#pragma pack(4)
+struct NModelSettings
 {
-    float4 v0;          // 0x00
-    float4 v1;          // 0x10
+    glm::vec4 LightPosition;      // 0x00, 16 B
+    glm::vec4 BodyLight;          // 0x10, 16 B
+    glm::vec4 BodyOrigin;         // 0x20, 16 B
 
-    uint32_t u20;       // 0x20
-    float    f24;       // 0x24
-    float    f28;       // 0x28
-    uint32_t zero2C;    // 0x2C
+    float BoneOffset;             // 0x30
+    float NormalScale;            // 0x34
+    float EnableLight;            // 0x38
+    float AlphaTest;              // 0x3C
 
-    float    f30;       // 0x30
-    float    zero34;    // 0x34
-    float    f38;       // 0x38
-    uint32_t u3C;       // 0x3C
+    float PremultiplyAlpha;       // 0x40
+    float WorldTime;              // 0x44
+    float ZTestRef;               // 0x48
+    float Dummy1;                 // 0x4C
 
-    float    flag40;    // 0x40
-    float    f44;       // 0x44
-    float    constant48;// 0x48 = -3000
-    float    zero4C;    // 0x4C
-
-    uint64_t zero50;    // 0x50
-    uint64_t tail58;    // 0x58
+    glm::vec2 BlendTexCoord;      // 0x50, 8 B
+    float Dummy2;                 // 0x58
+    float Dummy3;                 // 0x5C
 };
-static_assert(sizeof(ModelSettingsRaw) == 96);
+#pragma pack()
+
+static_assert(sizeof(NModelSettings) == 96);
 ```
 
-## Por que não nomear agora
+## Valores escritos no caminho normal de Model
 
-Mesmo que alguns valores pareçam `BodyLight`, alpha, UV offset, fog etc., atribuir nome por aparência cria dívida técnica e pode causar um shader incompatível. O próximo passo é ligar cada offset ao shader/consumer e então promover os nomes para **CONFIRMADO**.
+```text
+LightPosition     = terrain->GetLightPosition()
+BodyLight         = bodyLight/config alpha, com opção PremultiplyLight
+BodyOrigin        = vec4(config.BodyOrigin, 0)
+BoneOffset        = float(config.BoneOffset)
+NormalScale       = 0.0
+EnableLight       = float(config.EnableLight)
+AlphaTest         = settings->AlphaTest
+PremultiplyAlpha  = flag calculada a partir do material/texture/blend state
+WorldTime         = MUState::GetWorldTime()
+ZTestRef          = -3000.0
+Dummy1            = 0.0
+BlendTexCoord     = vec2(0,0) neste caminho
+```
+
+`Dummy2/Dummy3` fazem o fechamento/padding da estrutura de 96 bytes nessa revisão.
+
+## PremultiplyAlpha
+
+Não é simplesmente copiado do JSON. O cliente combina:
+
+```text
+settings->PremultiplyAlpha
+texture->HasAlpha()
+SrcBlend
+```
+
+para decidir o valor enviado ao shader.
+
+## Observação
+
+O nome anterior deste arquivo continha `RAW_LAYOUT` porque, antes da correlação com a source histórica, só os offsets eram conhecidos. O nome físico foi mantido para preservar links/histórico, mas o conteúdo agora é o layout semântico exato.
