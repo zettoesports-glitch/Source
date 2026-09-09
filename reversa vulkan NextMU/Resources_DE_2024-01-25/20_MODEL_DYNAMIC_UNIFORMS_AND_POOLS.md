@@ -1,112 +1,98 @@
-# 20 — Model dynamic uniforms e pools
+# 20 — Model dynamic uniforms e CPU backing queues
 
-Status: **CONFIRMADO** pelo assembly do model renderer (`0x14008DC21+`).
+Status: **CONFIRMADO-CRUZADO** pelo assembly e pela source pública de 25/01/2024.
 
-## Estratégia
+## Correção importante
 
-O NextMU não cria um buffer/uniform por draw. Ele usa páginas reutilizáveis e subaloca blocos fixos por mesh/draw, depois enfileira o upload no command buffer central.
+A interpretação inicial de “páginas GPU” estava incorreta. `NResizableQueue<T, 1024>` é uma **arena/fila de memória CPU thread-safe** usada para manter os structs vivos até o command buffer executar o `Map/Discard + memcpy`.
 
-## ModelViewProj
-
-Pool observado:
+Os buffers GPU são apenas dois UBOs dinâmicos pequenos:
 
 ```text
-page size       0x20000 = 131072 bytes = 128 KiB
-slots/page      0x400   = 1024
-slot stride     0x80    = 128 bytes
+ModelViewUniform     128 B
+ModelSettingsUniform  96 B
 ```
 
-Identidade exata:
+## NResizableQueue exata
 
-```text
-1024 * 128 = 131072 bytes
+Template:
+
+```cpp
+NResizableQueue<Type, Incr = 1024>
 ```
 
-Cada slot recebe dois blocos de 64 bytes:
+Comportamento:
+
+- começa com 1 bloco CPU de `1024 * sizeof(Type)`;
+- `Buffers.reserve(50)` reserva capacidade do vetor de ponteiros, não 50 blocos;
+- `Allocate()` é protegido por mutex;
+- quando o bloco atual atinge 1024 itens, reutiliza o próximo bloco já existente ou aloca outro;
+- `Reset()` apenas volta `Group=0`, `Index=0` para reutilização no frame seguinte;
+- memória é liberada somente no destrutor.
+
+## ModelView CPU backing
 
 ```text
-offset 0x00..0x3F : matriz 4x4 #1
-offset 0x40..0x7F : matriz 4x4 #2
+NModelViewSettings = 128 B
+1024 structs/bloco  = 128 KiB por bloco CPU
 ```
 
-O primeiro bloco vem de uma matriz já disponível no contexto do objeto; o segundo é obtido por uma função global de matriz. A nomenclatura semântica exata das duas matrizes permanece em investigação, portanto não é rotulada como `model/view/projection` individual sem prova adicional.
+Estrutura:
 
-Upload:
-
-```text
-0x14009A9B0
-command type 1
-MapBuffer -> memcpy(128) -> UnmapBuffer
+```cpp
+struct NModelViewSettings
+{
+    glm::mat4 Model;    // 64 B
+    glm::mat4 ViewProj; // 64 B
+};
 ```
 
-## ModelSettings
+Por draw:
 
-Segundo pool:
+1. `ModelViewBuffer.Allocate()` retorna um slot CPU;
+2. grava Model + ViewProj;
+3. o command manager recebe `UpdateBufferWithMap`;
+4. no replay, faz Map/Discard no **mesmo UBO GPU de 128 B** e copia o slot CPU.
+
+## ModelSettings CPU backing
 
 ```text
-page size       0x18000 = 98304 bytes = 96 KiB
-slots/page      0x400   = 1024
-slot stride     0x60    = 96 bytes
+NModelSettings = 96 B
+1024 structs/bloco = 96 KiB por bloco CPU
 ```
 
-Identidade:
+A mesma estratégia é usada:
+
+1. aloca struct CPU;
+2. preenche os 96 B;
+3. enfileira `UpdateBufferWithMap`;
+4. no replay, Map/Discard no UBO GPU de 96 B;
+5. copia os dados daquele draw imediatamente antes do PSO/resources/draw correspondentes.
+
+## Por que a arena CPU existe
+
+O renderer não pode apontar o command buffer para um struct temporário de stack que desapareça antes de `Execute()`. A `NResizableQueue` fornece endereços estáveis durante todo o frame e ainda permite produtores CPU multithread em outros subsistemas.
+
+## Fluxo real
 
 ```text
-1024 * 96 = 98304 bytes
-```
-
-Upload igualmente enfileirado via command type 1:
-
-```text
-MapBuffer -> memcpy(96) -> UnmapBuffer
-```
-
-## Gestão das páginas
-
-As páginas são mantidas em arrays/vetores globais. Quando o índice de slot chega a 1024:
-1. avança para a próxima página existente;
-2. se não houver página, aloca uma nova;
-3. reinicia o índice de slot;
-4. mantém a página para reutilização futura.
-
-Isso evita `new/delete` e criação de buffer por draw.
-
-## Fluxo por mesh
-
-```text
-obter slot ModelViewProj (128 B)
-  ↓
-copiar 2 matrizes
-  ↓
-enfileirar upload
-  ↓
-obter slot ModelSettings (96 B)
-  ↓
-preencher material/estado
-  ↓
-enfileirar upload
-  ↓
-SetPipelineState
-  ↓
-SetVertexBuffers
-  ↓
-CommitShaderResources
-  ↓
-Draw
+CPU backing slot 128 B
+ -> enqueue Map/Discard(ModelViewUniform)
+CPU backing slot 96 B
+ -> enqueue Map/Discard(ModelSettingsUniform)
+ -> SetPipelineState
+ -> SetVertexBuffer
+ -> CommitShaderResources
+ -> Draw
 ```
 
 ## Aplicação no nosso renderer
 
-Vale reproduzir o conceito como um `DynamicUniformArena` compartilhado:
+Podemos manter o mesmo conceito de **FrameUploadArena CPU**, mas melhorar a camada GPU:
 
-```cpp
-struct UniformSlice {
-    BufferHandle buffer;
-    uint32_t offset;
-    uint32_t size;
-};
-```
+- OpenGL 4.6+: UBO ring/buffer storage + range binding;
+- Vulkan: persistently mapped upload/ring buffer + dynamic offsets;
+- manter uma área CPU estável para command packets produzidos por workers;
+- evitar um Map/Discard por draw quando a implementação moderna puder escrever vários uniforms em uma única arena GPU.
 
-Com páginas persistentes e alinhamento por backend. No Vulkan podemos usar dynamic uniform/storage offsets; no GL4.6 podemos usar UBO range/buffer storage mantendo o mesmo frontend.
-
-Este desenho é especialmente útil para nosso BMD, pois elimina centenas/milhares de pequenas atualizações isoladas.
+Portanto o conceito a copiar é **arena CPU estável + command recording**, não “1024 UBOs/página”.
