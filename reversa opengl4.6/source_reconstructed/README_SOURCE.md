@@ -1,11 +1,25 @@
-# Source reconstruída
+# Source reconstruída OpenGL 4.6
 
-Esta árvore é uma implementação **clean-room de referência** derivada do `Main.exe` analisado. Ela não é a source original e não é adicionada ao build principal.
+Implementação **clean-room de referência**, não source original. Arquivos são classificados como EXTRACTED (literal), RECONSTRUCTED (fluxo derivado de assembly/xrefs) ou INFERRED (API limpa criada para representar a evidência).
 
-## Níveis de confiança
+## Núcleo
+- RendererSelection / RenderDevice3D: GL2 → GL3.3 Compatibility → GL4.6/fallback.
+- GL46Capabilities: capability matrix observada.
+- GLCorePrimitiveStream: referência para substituir primitive/immediate-mode.
+- LegacyReachabilityAudit: auditoria do fixed-function.
 
-- **EXTRACTED**: texto/valor literal no PE (shaders, paths, strings, imports).
-- **RECONSTRUCTED**: comportamento reconstruído a partir de assembly/xrefs.
-- **INFERRED**: API/estrutura limpa criada para representar evidência ainda incompleta.
+## Model
+- RendererModel + ModelCommandQueue: FrameData, 200 bones, material, pose, queue e G07 sorting conservador.
 
-O núcleo mais confiável hoje é: seleção de renderer, criação WGL 4.6→3.3, layout de FrameData, layout de ModelVertex, `u_Bones[200]`, Chrome/BlendMesh/fog/alpha/shadow GLSL e fases G01/G02/G03/G04/G06/G07/H08.
+## 2D
+- Renderer2DGL46 + Renderer2DBatcher + TextSurfaceCache.
+
+## Terrain/environment
+- RendererTerrainGL46 + TerrainCommandEncoder + Water/Sky/Atmosphere.
+
+## Effects
+- RendererClothGL46 + EffectsAdjacentBatcher.
+
+Os shaders literais/reconstruídos ficam fora da biblioteca em `../shaders/` para manter clara a proveniência.
+
+Esta árvore foi compilada localmente como biblioteca C++17 para validar consistência interna; isso não transforma código inferido em source original do executável.
