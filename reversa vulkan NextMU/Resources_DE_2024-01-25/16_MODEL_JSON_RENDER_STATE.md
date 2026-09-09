@@ -1,174 +1,287 @@
-# 16 — `model.json`: render-state configurável
+# 16 — `model.json`: schema de render-state EXATO
 
-Status: **CONFIRMADO por strings, xrefs e tabelas de inicialização estática**.
+Status: **SOURCE-CORRELATED / CONFIRMADO** com `mu_model.cpp` e `mu_model_mesh.h` históricos, consistente com strings/xrefs/tabelas recuperadas do EXE.
 
-Uma das descobertas mais úteis do NextMU é que boa parte do estado de renderização de modelos não fica hardcoded. O cliente carrega `model.json` e converte strings para estados compactos usados pelo renderer.
+## Top-level
 
-## Chaves confirmadas
+O loader reconhece:
 
 ```text
-model.json
-model
+model                    arquivo binário do modelo
+hide_body                bool
+bone_head                 int16
+body_height               float
 settings
-virtual_meshes
-meshes
-conditions
-program
-vertex_texture
-texture
-classify
-mode
-index
-normal
-lights
-pre_type
-pre_source
-pre_value
-post_type
-post_source
-post_value
-alpha_test
-premultiply_light
-premultiply_alpha
-hide_body
-bone_head
-body_height
+  virtual_meshes[]
 ```
 
-## Render state confirmado
+O modelo carrega ainda textures, bounding boxes e dados de mesh do arquivo base.
 
-O parser em `0x14003D880..0x14003DF96` reconhece:
+## `virtual_meshes[]`
+
+Cada entrada pode conter:
+
+```text
+id                       mesh index
+conditions               grupos de condições
+program                   shader id
+vertex_texture            resource texture id
+texture                   resource texture id
+classify
+  mode
+  index
+normal                    render state do modo normal
+alpha                     render state do modo alpha
+lights[]                  modificadores de luz
+alpha_test                float
+premultiply_light         bool
+premultiply_alpha         bool
+```
+
+Program default da revisão:
+
+```text
+mesh_normal
+```
+
+Se `program` custom existe, o shadow program procurado é automaticamente:
+
+```text
+<program>_shadow
+```
+
+## Render state (`normal` / `alpha`)
+
+### Write mask
 
 ```text
 write
-  rgb
-  alpha
+  rgb       bool
+  alpha     bool
+  depth     bool
+```
 
-depth
-cull
-depth_test
+### Cull
+
+```text
+cull: none | cw | ccw
+```
+
+Mapeamento source:
+
+```text
+none -> CULL_MODE_NONE
+cw   -> CULL_MODE_FRONT
+ccw  -> CULL_MODE_BACK
+```
+
+### Depth test
+
+```text
+depth_test:
+  none
+  never
+  less
+  equal
+  less_equal
+  greater
+  not_equal
+  greater_equal
+  always
+```
+
+Default:
+
+```text
+LESS_EQUAL
+```
+
+### Blend
+
+```text
 blend
   src
   dst
+  src_alpha
+  dst_alpha
   equation
   equation_alpha
 ```
 
-Isso permite descrever material/state sem recompilar C++.
-
-## Comparison / depth-test table exata
-
-A tabela inicializada em `0x1408493B0` é:
-
-| String | Código interno |
-|---|---:|
-| `none` | 0 |
-| `never` | 1 |
-| `less` | 2 |
-| `equal` | 3 |
-| `less_equal` | 4 |
-| `greater` | 5 |
-| `not_equal` | 6 |
-| `greater_equal` | 7 |
-| `always` | 8 |
-
-Os valores 1..8 correspondem à ordem do `COMPARISON_FUNCTION` da Diligent v2.5.4; `none=0` é o estado desabilitado/custom do NextMU.
-
-## Cull table exata
-
-Tabela em `0x1408493E0`:
-
-| String | Código |
-|---|---:|
-| `none` | 1 |
-| `cw` | 2 |
-| `ccw` | 3 |
-
-A orientação é armazenada pelo parser; não renomear automaticamente `cw/ccw` para FRONT/BACK sem considerar winding/front-face do PSO.
-
-## Blend-factor table exata
-
-Tabela em `0x1408493C0`:
-
-| String | Código Diligent |
-|---|---:|
-| `zero` | 1 |
-| `one` | 2 |
-| `src_color` | 3 |
-| `inv_src_color` | 4 |
-| `src_alpha` | 5 |
-| `inv_src_alpha` | 6 |
-| `dst_alpha` | 7 |
-| `inv_dst_alpha` | 8 |
-| `dst_color` | 9 |
-| `inv_dst_color` | 10 |
-| `src_alpha_sat` | 11 |
-
-Isso coincide com `BLEND_FACTOR` da Diligent v2.5.4.
-
-## Blend-equation table exata
-
-Tabela em `0x1408493D0`:
-
-| String | Código |
-|---|---:|
-| `add` | 1 |
-| `sub` | 2 |
-| `revsub` | 3 |
-| `min` | 4 |
-| `max` | 5 |
-
-## Outros modos encontrados no mesmo schema
+Factors:
 
 ```text
-opaque
-pre_alpha
-post_alpha
-light
-luminosity
-auto
+zero
+one
+src_alpha
+src_color
+inv_src_alpha
+inv_src_color
+dst_alpha
+dst_color
+inv_dst_alpha
+inv_dst_color
+src_alpha_sat
+```
+
+Equations:
+
+```text
+add
+sub
+revsub
+min
+max
+```
+
+`src`/`dst` inicializam RGB e Alpha juntos; `src_alpha`/`dst_alpha` podem sobrescrever apenas o canal alpha.
+`equation` inicializa RGB e Alpha; `equation_alpha` sobrescreve somente alpha.
+
+## Shadow state
+
+Para cada state Normal/Alpha o cliente gera também:
+
+```text
+ShadowRenderState[Normal]
+ShadowRenderState[Alpha]
+```
+
+via `NormalizeShadowRenderState(renderState)`.
+
+Isso mantém cull/depth necessários ao material, mas normaliza propriedades incompatíveis/desnecessárias no depth-only shadow pass.
+
+## Classificação
+
+```text
+classify.mode:
+  auto
+  opaque
+  pre_alpha
+  post_alpha
+
+classify.index: uint32
+```
+
+Mapeamento:
+
+```text
+auto       -> None (classificação calculada pelo pipeline state)
+opaque     -> Opaque
+pre_alpha  -> PreAlpha
+post_alpha -> PostAlpha
+```
+
+O `index` participa da order key/classifier usada pelo `RenderManager`.
+
+## Condições de virtual mesh / lights
+
+`conditions` é um array de grupos; cada grupo contém condições do tipo:
+
+```json
+{
+  "type": "...",
+  "operator": "...",
+  "value": 0
+}
+```
+
+Tipos confirmados:
+
+```text
+item_level
+item_level_by_formula
+item_rank
+options_count
+option_type
+option_min_rank
+option_max_rank
+option_avg_rank
+```
+
+Operadores:
+
+```text
+equal
+not_equal
+less
+less_equal
+greater
+greater_equal
+```
+
+O valor é armazenado como `uint32` nessa revisão.
+
+Essas condições permitem variar material/virtual mesh com level/rank/options do item sem recompilar C++.
+
+## Virtual lights
+
+Cada light configurável usa:
+
+```text
+clamp
+pre_type
+pre_source
+pre_value[3]
+post_type
+post_source
+post_value[3]
+conditions (opcional)
+```
+
+Tipos de operação:
+
+```text
+add
+subtract
+multiply
+divide
+inv_divide
 source_set
 target_set
-move_speed
-attack_speed
 ```
 
-Esses nomes são CONFIRMADOS como parte da configuração/model pipeline, mas o significado de todos os códigos associados ainda está sendo ligado às funções consumidoras.
-
-## Estratégia recomendada para nosso renderer
-
-Adotar um descritor comum:
-
-```cpp
-struct MuRenderState {
-    bool colorWriteRGB;
-    bool colorWriteAlpha;
-    bool depthWrite;
-    CompareFunc depthFunc;
-    CullMode cull;
-    bool blendEnable;
-    BlendFactor srcRGB;
-    BlendFactor dstRGB;
-    BlendOp opRGB;
-    BlendFactor srcAlpha;
-    BlendFactor dstAlpha;
-    BlendOp opAlpha;
-};
-```
-
-E converter esse contrato para:
+Sources:
 
 ```text
-OpenGL 4.6 -> glDepthFunc / glBlendFuncSeparate / glBlendEquationSeparate / glCullFace...
-Vulkan     -> VkPipelineDepthStencilStateCreateInfo / VkPipelineColorBlendAttachmentState / raster state
+none
+light
+luminosity
 ```
 
-Assim um único `model.json` pode controlar os dois backends.
+Estrutura correspondente possui fases Pre e Post e pode aplicar clamp [0,1].
 
-## Ganho para updates futuros
+### Nota forense sobre a baseline histórica
 
-- novos materiais sem recompilar o cliente;
-- correções de blend/alpha por modelo via dados;
-- mesma definição visual em GL4.6 e Vulkan;
-- PSO cache pode usar `MuRenderState` como parte da chave;
-- facilita validar fidelidade entre os dois backends.
+No commit público de 25/01/2024 existe uma atribuição suspeita no parser de `post_type/post_source`: os campos `PreType/PreSource` aparecem sendo escritos novamente onde semanticamente seriam esperados `PostType/PostSource`. Como a árvore pública é uma baseline correlacionada e não prova identidade total byte-a-byte do pacote, isso está registrado como possível bug daquela revisão, não como comportamento obrigatório do nosso renderer.
+
+## Mesh settings resultante
+
+```text
+Program
+ShadowProgram
+Texture
+VertexTexture
+RenderState[Normal,Alpha]
+ShadowRenderState[Normal,Alpha]
+ClassifyMode
+ClassifyIndex
+AlphaTest (default 0.25)
+PremultiplyLight
+PremultiplyAlpha
+Lights[]
+```
+
+## Estratégia para nosso renderer
+
+Esse schema deve inspirar um contrato backend-agnostic:
+
+```text
+Model material JSON
+ -> MuMaterialState
+ -> classification/order key
+ -> PSO cache
+ -> SRB/resource key
+ -> GL4.6 or Vulkan backend
+```
+
+Ganho: podemos corrigir blend, alpha, cull, depth, shader e virtual variants por dados, mantendo GL4.6+ e Vulkan visualmente alinhados.
